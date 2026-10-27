@@ -76,6 +76,25 @@ node scripts/smoke.mjs --prompt="你好"        # 自定义提示词
 
 会真实消耗 1 条免费额度。
 
+## 配置
+
+有两种改法，效果相同：
+
+1. **设置面板**：DSH 设置 → 插件 → **ChatGPT 网页版**（`client/index.ts` 注册进 `plugins.item` 插槽）
+2. **直接改文件**：`~/.dsh/chatgpt-web/config.json`
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `transport` | `node` | `node` 不需要浏览器；被 Cloudflare 拦截时改 `chromium` |
+| `devtoolsPort` | `9222` | 仅浏览器代理使用 |
+| `softTurns` | `25` | 到这里主动轮换网页端会话 |
+| `hardTurns` | `40` | 强制轮换；必须大于软水位（会被自动抬高） |
+| `minIntervalMs` / `maxIntervalMs` | `4000` / `9000` | 随机间隔；固定值更像脚本 |
+| `rateMaxInWindow` | `12` | 滚动窗口内的请求上限 |
+| `catalogBudgetChars` | `24000` | 工具目录预算，超了把长尾工具压成仅名字 |
+
+> 所有字段都做了范围钳制与非法值回退，手改坏了也不会让插件起不来。
+
 ## 选模型
 
 模型选择器 → provider `chatgpt-web` → `ChatGPT 网页 · 免费`。

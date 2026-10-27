@@ -11,6 +11,8 @@ import "../tests/check-adapter.test.mjs";
 import "../tests/check-plugin.test.mjs";
 import "../tests/check-visibility.test.mjs";
 import "../tests/check-transport-select.test.mjs";
+import "../tests/check-config.test.mjs";
+import "../tests/check-client.test.mjs";
 import { summary } from "../tests/harness.mjs";
 
 summary();

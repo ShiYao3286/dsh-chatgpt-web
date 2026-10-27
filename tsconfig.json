@@ -11,7 +11,9 @@
     "allowImportingTsExtensions": true,
     "types": [
       "node"
-    ]
+    ],
+    "jsx": "react-jsx",
+    "allowJs": true
   },
   "include": [
     "src/**/*.ts"
