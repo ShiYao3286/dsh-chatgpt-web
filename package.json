@@ -11,13 +11,14 @@
     },
     "./package.json": "./package.json",
     "./client": {
-      "default": "./src/client/index.ts"
+      "default": "./lib/client.js"
     }
   },
   "files": [
     "lib",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "repository": {
     "type": "git",
@@ -29,7 +30,7 @@
   },
   "scripts": {
     "test": "node scripts/test-offline.mjs",
-    "build": "tsdown",
+    "build": "tsdown && node scripts/wrap-client.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
