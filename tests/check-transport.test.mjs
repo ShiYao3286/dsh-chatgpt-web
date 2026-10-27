@@ -515,7 +515,7 @@ section("browser：profile 被占用时立刻报错（不等 30 秒）");
 {
   const calls = { spawn: [], unref: 0 };
   const deps = makeDeps({ calls });
-  deps.exists = (p) => p.endsWith("lockfile") || p.includes("msedge.exe");
+  deps.exists = (p) => p.endsWith("lockfile") || p === browserCandidates(process.platform)[0];
   let caught = null;
   try { await ensureBrowser({ profileDir: "P:/prof" }, deps); } catch (e) { caught = e; }
   ok(caught instanceof BrowserError, "抛 BrowserError");
