@@ -470,7 +470,8 @@ function makeDeps(extra = {}) {
     targetList: async () => extra.targets ?? [],
     sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 20))),
     now: () => 1000,
-    exists: (p) => (extra.existing ?? ["C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"]).includes(p),
+    // Simulated candidate for the current platform; no installed browser is required.
+    exists: (p) => (extra.existing ?? [browserCandidates(process.platform)[0]]).includes(p),
     mkdir: () => {},
     connect: async () => {
       throw new Error("测试里不该真的连 CDP");
