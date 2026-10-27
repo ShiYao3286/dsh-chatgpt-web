@@ -1,0 +1,5 @@
+# DSH bundle 装配层：走官方装配（dsh plugin add）时插入本插件。
+- insert:
+    - id: dsh-chatgpt-web
+      name: dsh-chatgpt-web
+      config: {}
