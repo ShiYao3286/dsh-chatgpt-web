@@ -73,8 +73,10 @@ export function interpretFrames(raw: Partial<RawTurnOutcome>): TurnResponse {
   // 失败必须**永远**带一个分类，否则调用方只能看到 ok=false 却无法路由。
   // 这两种情况都不是服务端明确报错，但也不是成功：空响应与断流。
   if (failure === null && !hasVisibleText) failure = "empty-response";
-  if (failure === null && !sawDone) failure = "truncated";
-  const ok = failure === null && status === 200 && sawDone && hasVisibleText;
+  if (failure === null && acc.failed) failure = "unknown";
+  if (failure === null && status !== 200) failure = "unknown";
+  if (failure === null && (!sawDone || !acc.complete)) failure = "truncated";
+  const ok = failure === null && status === 200 && sawDone && acc.complete && hasVisibleText;
   return {
     ok,
     status,

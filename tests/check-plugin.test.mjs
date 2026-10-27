@@ -4,7 +4,7 @@ import { name, inject, describePlugin, apply, SETTINGS_NS, CONFIG_DEFAULTS, desc
 section("插件元数据");
 eq(name, "dsh-chatgpt-web", "插件名");
 ok(inject.includes("llm"), "inject 含 llm");
-eq(SETTINGS_NS, "chatgpt-web", "settings 命名空间");
+eq(SETTINGS_NS, "dsh-chatgpt-web", "原生插件设置 entry id");
 
 section("describePlugin");
 ok(describePlugin().includes("chatgpt-web"), "含路由名");
@@ -25,18 +25,19 @@ section("apply：没有 settings 服务也能装配");
   ok(logged.includes("dsh-chatgpt-web"), "写了日志");
 }
 
-section("apply：有 settings 服务时注册命名空间");
+section("apply：真实注册adapter并挂接生命周期");
 {
   const regs = [];
+  let disposed = false;
   const ctx = {
-    llm: { registerAdapter: () => ({}) },
+    llm: { registerAdapter: (routes, adapter) => { regs.push({ routes, adapter }); return () => { disposed = true; }; } },
     logger: { info: () => {} },
-    settings: { register: (ns, def) => { regs.push({ ns, def }); } },
+    effect: callback => { const dispose = callback(); dispose(); },
+    settings: { register: () => { throw new Error('不得使用不存在的settings.register'); } },
   };
   apply(ctx);
   eq(regs.length, 1, "注册了一次");
-  eq(regs[0].ns, "chatgpt-web", "命名空间正确");
-  ok(typeof regs[0].def.load === "function", "带 load");
-  ok(typeof regs[0].def.save === "function", "带 save");
-  ok(regs[0].def.defaults.transport === "node", "默认 transport 是 node");
+  eq(regs[0].routes[0], "chatgpt-web", "路由正确");
+  ok(typeof regs[0].adapter.stream === "function", "真实adapter具有stream");
+  ok(disposed, "生命周期返回注销函数");
 }

@@ -51,7 +51,7 @@ section("浏览器头：没有 cookie 时不写该头");
 {
   const h = browserHeaders({ version: 1, accessToken: "T", cookieHeader: null, dataBuild: "", userAgent: "", languages: [], planType: null, capturedAt: 0, lastOkAt: null });
   eq(Object.hasOwn(h, "cookie"), false, "无 cookie 时不写");
-  ok(h["user-agent"].includes("Chrome"), "空 UA 有默认值");
+  ok(h["user-agent"].includes("DSH"), "空 UA 明确标识客户端");
 }
 
 section("凭证归一化");
@@ -71,6 +71,6 @@ section("凭证指纹：不泄露完整 token");
   const a = normalizeAuth({ accessToken: "eyJhbGciOiJIUzI1NiJ9" + "x".repeat(200) });
   const fp = authFingerprint(a);
   eq(fp.includes("x".repeat(50)), false, "不含 token 长串");
-  ok(fp.includes("len="), "带长度信息");
+  eq(fp, "[credential redacted]", "不暴露token片段或长度");
   ok(fp.length < 40, "指纹很短");
 }

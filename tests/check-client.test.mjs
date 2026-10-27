@@ -7,15 +7,17 @@ section("字段声明");
 eq(FIELDS.length, 8, "8 个字段");
 eq(FIELDS[0].key, "transport", "第一个是 transport");
 eq(FIELDS[0].kind, "enum", "transport 是枚举");
-deepEq(FIELDS[0].options, ["node", "chromium"], "枚举值");
-ok(FIELDS.slice(1).every((f) => f.kind === "number"), "其余都是数字");
+deepEq(FIELDS[0].options, ["node"], "仅启用 node");
+ok(FIELDS.slice(2).every((f) => f.kind === "number"), "其余都是数字");
 
 section("面板默认值与 Host 侧一致（防止两处漂移）");
 {
   for (const k of Object.keys(FIELD_DEFAULTS)) {
+    if (k === 'webModel') continue;
     ok(Object.hasOwn(DEFAULT_CONFIG, k), "Host 侧也有 " + k);
     eq(FIELD_DEFAULTS[k], DEFAULT_CONFIG[k], k + " 默认值一致");
   }
+  eq(FIELD_DEFAULTS.webModel, 'auto', 'webModel default');
 }
 
 section("fieldProps");
@@ -24,11 +26,12 @@ section("fieldProps");
   eq(p.id.includes("transport"), true, "id 含字段名");
   eq(p.value, "chromium", "值透传");
   eq(p.numeric, false, "枚举不是数字");
-  deepEq(p.options, ["node", "chromium"], "枚举带 options");
+  deepEq(p.options, ["node"], "枚举带 options");
   eq(p.disabled, false, "可编辑");
 
-  const n = fieldProps(FIELDS[1], undefined, true);
-  eq(n.value, 9222, "未设值时用默认");
+  eq(fieldProps(FIELDS[1], undefined, false).value, 'auto', '网页模型默认值');
+  const n = fieldProps(FIELDS[2], undefined, true);
+  eq(n.value, 25, "未设值时用默认");
   eq(n.numeric, true, "数字字段");
   eq(n.disabled, true, "禁用透传");
   eq(Object.hasOwn(n, "options"), false, "数字字段无 options");

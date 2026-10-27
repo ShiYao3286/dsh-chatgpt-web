@@ -16,13 +16,15 @@
   },
   "files": [
     "lib",
+    "src",
+    "scripts/capture-auth.mjs",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/local/dsh-chatgpt-web.git"
+    "url": "git+https://github.com/ShiYao3286/dsh-chatgpt-web.git"
   },
   "license": "MIT",
   "engines": {
@@ -38,17 +40,17 @@
     "tsdown": "0.22.14",
     "@types/node": "24.13.3"
   },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-llm": "^0.1.7-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.4"
+  },
   "dsh": {
+    "client": {
+      "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-client-ui-plugin-manager"],
+      "platform": "web"
+    },
     "bundle": {
       "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-slots"
-      ],
-      "key": "./src/client/index.ts"
     }
   }
 }

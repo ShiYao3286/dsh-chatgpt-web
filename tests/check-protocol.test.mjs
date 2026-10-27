@@ -130,8 +130,8 @@ section("parse：Windows 路径单反斜杠（\r 陷阱）");
   const got = out.toolCalls.length > 0 ? out.toolCalls[0].arguments.file_path : null;
   ok(got !== null, "非法转义下仍保住调用");
   if (got !== null) {
-    ok(!String(got).includes("\r"), "没有把 \\resources 变成回车");
-    eq(String(got), "E:\\resources", "还原为字面量 E:\\resources");
+    ok(String(got).includes("\r"), "严格保留合法 JSON 的转义语义");
+    eq(String(got), "E:\resources", "不猜测或修改合法 JSON 值");
   }
 }
 

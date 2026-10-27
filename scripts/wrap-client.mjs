@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 构建后处理：把 client 产物包装成 DSH 要求的 __ModuleLoader__ 懒 CJS 形态。
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const FILE = join(ROOT, "lib", "client.js");
 const PKG = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+// Keep legacy explicit Chromium resource lookup self-contained in published lib.
+mkdirSync(join(ROOT, "lib", "wire"), { recursive: true });
+for (const file of ["page-pow.js", "page-turn.js"]) {
+  copyFileSync(join(ROOT, "src", "wire", file), join(ROOT, "lib", "wire", file));
+}
 
 const src = readFileSync(FILE, "utf8");
 const imports = [];

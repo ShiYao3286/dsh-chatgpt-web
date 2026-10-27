@@ -1,139 +1,56 @@
 # dsh-chatgpt-web
 
-非官方 DSH 插件：把 chatgpt.com **免费档**网页端做成 DSH 的 LLM provider（路由名 `chatgpt-web`）。
+非官方 DSH provider，路由 `chatgpt-web`，模型目录 `chatgpt-free`。复用用户正常网页登录后手工捕获的认证，不是 OpenAI 官方 API。私有接口可能变化，存在服务条款、限流和账号风险，不保证可用性或底层模型身份。
 
-> ⚠️ 非官方项目，与 OpenAI 无关联。调用网页端私有接口可能违反服务条款，**存在账号被限流或封禁的风险**，使用风险自负。
+## 实际接入
 
-## 它是什么
+入口继承并注册真实 `@deepseek-ai/dsh-llm` 的 `LlmAdapter`，按本机宿主 **0.1.7-rc.2** 接口验证；原生 Config 使用 `@deepseek-ai/schemastery` **3.18.4**。桌面 GUI 的具体发行版未核验，重启后的加载与真实网络可用性需要用户验证。
 
-```
-DSH agent loop → ctx.llm → [chatgpt-web 适配器] → chatgpt.com
-                                  ├─ 默认：Node 直连（不需要浏览器）
-                                  ├─ PoW（SHA3-512）
-                                  ├─ sentinel 挑战 + Bearer token
-                                  └─ 提示词工具协议 ⇄ tool-call
-```
+- 模型目录、resolveModel、继承 prepareCall、标准 text/tool-call/finish chunks。
+- provider 级单飞，不排队；按 Harness sessionId 隔离网页绑定。
+- 使用完整新增消息（包括多个工具结果）；改写、压缩或固定头改变时重新建立网页会话。
+- 网页绑定、检查点和调用台账在此 adapter 内仅保存在内存；重启后使用 Harness 提供的完整历史重建，不迁移或删除认证。
+- 仅启用 Node 传输。不会自动开启浏览器、自动回落、求解 PoW、验证码或其他挑战。若站点要求 sentinel/挑战，调用会失败，需用户在正常浏览器人工恢复；恢复也不保证私有接口接受 Node 请求。
+- `options.signal` 取消贯穿 HTTP 和流读取，总超时默认 180 秒。
+- 会话标题本地生成；compaction 使用独立网页会话处理真实输入，不再用最后一条文本冒充完整摘要，因此可能消耗网页额度。
 
-它**不**调用 OpenAI API，而是复用你在浏览器里登录过一次之后捕获的登录态。
+## 安装与构建
 
-### 为什么默认不需要浏览器
+已有依赖时可离线执行 `npm run typecheck`、`npm run build`、`npm test`（先构建再测，客户端回归执行构建资产）。包使用宿主的 dsh-llm/schemastery peer dependencies，不内嵌第二份宿主服务。
 
-最初的实现必须常驻一个可调试的 Edge/Chrome（担心 Cloudflare 识别 TLS 指纹）。
-**这个前提是被实测推翻的**：把全部调试浏览器关掉、调试端口停掉之后，纯 Node 直连仍然
-`status 200`、拿到完整 SSE、模型真实回复 `PONG`。
+包中的 `cordis.patch.yml` 是 bundle 装配入口。profile 需要同时有包依赖和 `dsh.profile.bundles` 中的 `dsh-chatgpt-web`；只有 link 依赖不代表启用。完成后由用户自行正常退出、重启桌面应用。
 
-所以现在的形态是：**登录一次 → 捕获凭证落盘 → 之后纯 Node 跑，不挂浏览器**。
-只有被 Cloudflare 拦（返回 HTML 挑战页）才回落到浏览器代理。
+## 认证
 
-顺带一个证据：sentinel 里 `turnstile.required: true`，但我们**不带 turnstile token 也能通过** ——
-真正的门槛只有 PoW 与 Bearer。
+保留既有 `~/.dsh/chatgpt-web/auth.json` 格式和位置（遵循现有路径环境配置）。运行时读取已有凭证，不自动改写；缺失、JWT exp 到期或服务器拒绝时返回明确认证错误。日志不输出 token 片段。
 
-## 三条不可协商的设计前提
+需要认证时，用户可显式执行 `node scripts/capture-auth.mjs`，在浏览器中正常手工登录。该脚本具有启动浏览器、读取和保存登录态的副作用，不属于离线测试。本次修复没有执行它，没有读取实际凭证，也没有真实请求网页接口。
 
-1. **单飞，绝不排队。** 上一条没处理完时，下一次调用**立即**返回 `busy`，不排队、不等待。
-   排队会把 DSH 的重试策略叠上一层等待，表现成"看起来卡死"。
-2. **网页端会话是可撤销缓存，不是副本。** 只要不是严格追加（压缩、改写、固定头变化、
-   到水位、疑似会话丢失），一律开新会话 —— 我们无法改写网页端已经收到的消息树。
-3. **网页端额度是稀缺资源。** `session-title` 与 `compaction` 一律本地合成，**零网络请求**；
-   只有真正的对话才花额度。
+## 设置
 
-## 安装
+使用宿主原生插件 Config schema 和真实 `configForms` / `plugins.item` 管理卡片，不使用不存在的 `settings.register`。浏览器入口由 `dsh.client` 与 `exports["./client"]` 装配，只有宿主提供 **dsh-chatgpt-web** 配置命名空间时显示。卡片通过宿主 `SettingsFormModel` 绑定字段、编辑/重置/保存/丢弃操作，显示可写性、无效输入与保存失败。认证状态明确标为“未检查”：卡片不读取凭证，尚未提供认证运行状态回传；实际调用的认证错误由 provider 脱敏返回，不能把卡片可见当作已登录。原 `~/.dsh/chatgpt-web/config.json` 不再作为此 adapter 的配置来源，文件不会被迁移或删除。
 
-```bash
-cd E:\ai处理文件\dsh-chatgpt-web
-npm install
-npm test          # 离线套件，不碰网络
-```
-
-装配到 DSH（包内 `cordis.patch.yml` 会自注册，**不要**再手动 insert）：
-
-```bash
-dsh plugin --profile desktop add ./dsh-chatgpt-web
-```
-
-## 登录一次（只做一次）
-
-凭证捕获之后会落盘到 `~/.dsh/chatgpt-web/auth.json`，**之后不再需要浏览器**。
-
-```bash
-node scripts/capture-auth.mjs
-```
-
-它会拉起一个浏览器窗口（独立 profile，不碰你日常 Edge 的 cookie 和历史），
-你在里面正常登录 chatgpt.com，脚本轮询到登录成功后自动捕获：
-accessToken、cookie、data-build、UA、语言、套餐类型。
-
-> **凭证与浏览器 profile 是解耦的。** 删掉浏览器 profile 也不用重新登录 —— 凭证在 auth.json 里。
-> 反过来，auth.json 丢了就得重登一次。
-
-## 端到端冒烟
-
-```bash
-node scripts/smoke.mjs                       # 默认走 Node，不需要浏览器
-node scripts/smoke.mjs --chromium            # 强制走浏览器代理
-node scripts/smoke.mjs --prompt="你好"        # 自定义提示词
-```
-
-会真实消耗 1 条免费额度。
-
-## 配置
-
-有两种改法，效果相同：
-
-1. **设置面板**：DSH 设置 → 插件 → **ChatGPT 网页版**（`client/index.ts` 注册进 `plugins.item` 插槽）
-2. **直接改文件**：`~/.dsh/chatgpt-web/config.json`
-
-| 字段 | 默认 | 说明 |
+| 字段 | 默认值 | 说明 |
 |---|---|---|
-| `transport` | `node` | `node` 不需要浏览器；被 Cloudflare 拦截时改 `chromium` |
-| `devtoolsPort` | `9222` | 仅浏览器代理使用 |
-| `softTurns` | `25` | 到这里主动轮换网页端会话 |
-| `hardTurns` | `40` | 强制轮换；必须大于软水位（会被自动抬高） |
-| `minIntervalMs` / `maxIntervalMs` | `4000` / `9000` | 随机间隔；固定值更像脚本 |
-| `rateMaxInWindow` | `12` | 滚动窗口内的请求上限 |
-| `catalogBudgetChars` | `24000` | 工具目录预算，超了把长尾工具压成仅名字 |
+| transport | node | 原生设置只允许 node；旧 chromium 配置明确拒绝 |
+| webModel | auto | 网页实际模型选择符，不保证其身份或账号权限 |
+| softTurns / hardTurns | 25 / 40 | 保守轮换水位 |
+| minIntervalMs / maxIntervalMs | 4000 / 9000 | 调用间隔闸门，不排队等待 |
+| rateMaxInWindow | 12 | 滚动窗口请求上限 |
+| catalogBudgetChars | 24000 | 工具目录预算 |
 
-> 所有字段都做了范围钳制与非法值回退，手改坏了也不会让插件起不来。
+## 已知边界
 
-## 选模型
+- **实时正文，延迟工具**：SSE 帧经异步队列立即输出普通正文，不做事后全文重播或假打字。跨块工具协议/交接标记暂存且不显示，工具必须等整轮成功及最终验证后输出。取消、断线或协议失败保留已显示正文，但 finish 失败，不执行工具；已显示正文不代表远端最终成功。非单调的正文改写会失败而不是重复输出。正文边缘空白会裁剪，连续三个以上换行归一为两个。
+- 要求 HTTP 成功、SSE DONE、assistant 成功终态，无业务错误；仅 DONE 不足以判成功。
+- 工具调用是提示词协议，不是原生 function calling。调用必须闭合且为严格 JSON，工具名必须在当前声明中；基础参数结构检查不能替代宿主最终权限和完整 JSON Schema 校验。
+- 不支持图像输入，无权威 token usage；目录采用保守 16384 上下文 / 2048 默认输出预算，不是网页模型能力承诺。
+- 内部轮换种子有 12000 字符上限，adapter 会保守拒绝超长输入而不是静默截断；大工具目录可能提前触及此限制。
+- 网页接口不提供可靠 temperature、maxTokens、stop 控制，不保证这些选项被远端执行；不要依赖它们作为安全限制。
+- 历史 Chromium/page/PoW 模块作为未启用的旧实现保留，宿主 adapter 不走这些路径；不应将旧 smoke/probe 脚本作为安全离线测试。
 
-模型选择器 → provider `chatgpt-web` → `ChatGPT 网页 · 免费`。
+## 本地测试
 
-免费档只有一条模型：思考与否是同一模型的开关，不是两个模型。
-
-## 已知限制
-
-- **免费额度**：具体条数随账号与时段变化，插件按保守水位轮换（默认 25 轮软水位 / 40 轮硬上限）。
-- **单飞**：同一时刻只能有一轮在跑。这是设计前提，不是可调参数。
-- **accessToken 会过期**：过期后请求返回 `AUTH`，需要重跑一次 `capture-auth.mjs`。
-- **Cloudflare 可能收紧**：届时 Node 直连会被返回 HTML 挑战页，插件会报 `cloudflare` 失败，
-  此时改用 `--chromium` 或设置 `transport: chromium` 走浏览器代理。
-- **封号风险**：这是本方案的固有成本，代码里消不掉。不建议用新号，不建议多开。
-- **工具协议是提示词模拟的**，网页端没有原生 function calling；模型偶发格式漂移由解析器兜底。
-
-## 架构
-
-| 层 | 位置 | 职责 |
-|---|---|---|
-| 凭证 | `src/auth.ts` | accessToken / cookie / data-build 落盘与归一化 |
-| 传输 | `src/transport/` | `node-http.ts` 直连（主路径）、`cdp.ts`/`browser.ts` 浏览器代理（回落） |
-| 线缆 | `src/wire/` | 请求构造、SSE patch 解析、页面侧运行时 |
-| 协议 | `src/protocol/` | bootstrap 渲染、工具目录预算、工具调用解析、未执行检测 |
-| 绑定 | `src/binding/` | 三动作决策（append / re-anchor / rotate）、检查点、重启校验 |
-| 闸门 | `src/gate/` | 单飞、随机间隔、长休、滚动窗口、调用台账 |
-| 适配器 | `src/adapter.ts` | 模型目录、purpose 分流、失败码映射、传输选择 |
-
-## 测试
-
-```bash
-npm test
-```
-
-全部离线：不启动浏览器、不发网络请求。有两条基线判据守着：
-
-- `defaultSpawnCalls === 0 && defaultConnectCalls === 0` —— 测试物理上不可能拉起浏览器。
-- 页面侧 PoW 与 `src/pow/*.ts` 是两份实现，由**差分测试**钉住逐字节一致。
-
-## 许可证
+`npm test` 为纯离线单元测试；真实 adapter 回归注入合成认证及内存传输，不访问凭证文件或网络。包含传输未完成时已输出正文、取消/断线保留正文但失败、工具延后和跨块标记测试。客户端回归运行真实构建 factory，并从本机安装包抽取纯 `SettingsFormModel` 测试控制器（不启动宿主、不渲染浏览器）；默认宿主包根为本机 DSH npm 安装位置，可用 `DSH_OFFLINE_HOST_ROOT` 指定 `@deepseek-ai` 包目录。`npm run build` 生成 `lib/index.js` 与 `lib/client.js`；构建目录被 Git 忽略，需要提交源码后本地/打包时重新构建。离线检查不代替桌面重启后的 GUI/真实认证验证。
 
 MIT

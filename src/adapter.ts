@@ -38,8 +38,9 @@ export interface ModelInfo {
   readonly maxTokens: number;
 }
 
-export const CONTEXT_WINDOW = 1_048_576;
-export const DEFAULT_MAX_TOKENS = 32_768;
+// Conservative harness budgeting, not a claim about the private web model.
+export const CONTEXT_WINDOW = 16_384;
+export const DEFAULT_MAX_TOKENS = 2_048;
 
 /** 只暴露一条模型：免费档只有「快速模式」，思考是同一模型的开关。 */
 export const MODELS: readonly ModelInfo[] = [
@@ -93,6 +94,9 @@ export interface RunTurnInput {
   readonly parentMessageId: string | null;
   readonly userMessageId: string;
   readonly model: string;
+  readonly signal?: AbortSignal;
+  readonly headers?: Record<string, string>;
+  readonly onFrame?: (frame: string) => void;
   /** 传输层偏好。默认 node；Chromium 仅在 Cloudflare 拦截时使用。 */
   readonly transport?: TransportKind;
   /** chromium 传输必需。 */
@@ -116,6 +120,9 @@ export async function runTurn(input: RunTurnInput): Promise<RawTurnOutcome> {
       parentMessageId: input.parentMessageId,
       userMessageId: input.userMessageId,
       model: input.model,
+      signal: input.signal,
+      headers: input.headers,
+      onFrame: input.onFrame,
     });
     return {
       status: r.status,

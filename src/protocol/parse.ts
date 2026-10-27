@@ -76,6 +76,7 @@ const OPEN_TAGS: readonly OpenTag[] = [
   { text: "<toolcall>", family: "json" },
   { text: "<function_call>", family: "json" },
   { text: "<function-call>", family: "json" },
+  { text: "<｜DSML｜invoke", family: "xml" },
   { text: "<|DSML|invoke", family: "xml" },
   { text: "<|dsml|invoke", family: "xml" },
   { text: "<invoke", family: "xml" },
@@ -89,6 +90,7 @@ const CLOSE_TAGS: readonly CloseTag[] = [
   { text: "</toolcall>", open: "<toolcall>" },
   { text: "</function_call>", open: "<function_call>" },
   { text: "</function-call>", open: "<function-call>" },
+  { text: "</｜DSML｜invoke>", open: "<｜DSML｜invoke" },
   { text: "</|DSML|invoke>", open: "<|DSML|invoke" },
   { text: "</|dsml|invoke>", open: "<|dsml|invoke" },
   { text: "</invoke>", open: "<invoke" },
@@ -517,18 +519,10 @@ export function parseLooseObject(raw: string): RepairResult {
 
   const repaired = repairJsonText(body);
 
-  // 顺序很重要：**修复版优先于原始版**。
-  //
-  // 反例：模型写 "E:\resources"（单反斜杠）。这份原文是**合法 JSON**，
-  // JSON.parse 会成功并给出 「E:<CR>esources」—— 路径被静默改掉，而且因为
-  // "解析成功"你永远看不到任何错误。repairJsonText 已经把它修成
-  // "E:\\resources"，所以必须先试修复版。
-  //
-  // 只有修复版解析失败、而原始版能解析时才回落到原始版（那种情况说明
-  // 原文本来就是对的，repairJsonText 的启发式这次没命中）。
+  // Valid JSON is authoritative: never reinterpret legitimate escape sequences.
   const attempts: string[] = [
-    repaired,
     body,
+    repaired,
     dropTrailingCommas(repaired),
     quoteBareKeys(dropTrailingCommas(repaired)),
     balanceBraces(quoteBareKeys(dropTrailingCommas(repaired))),
@@ -682,8 +676,8 @@ interface CandidateOutcome {
 }
 
 function candidateFromJson(body: string, fallbackId: string): CandidateOutcome {
-  const parsed = parseLooseObject(body);
-  if (!parsed.ok) return { reason: parsed.reason ?? "JSON 解析失败" };
+  const parsed = tryParse(body.trim());
+  if (!parsed.ok) return { reason: "工具调用必须是严格 JSON" };
   const obj = asRecord(parsed.value);
   if (obj === null) return { reason: "解析结果不是对象" };
 
@@ -699,9 +693,12 @@ function candidateFromJson(body: string, fallbackId: string): CandidateOutcome {
   if (asObj !== null) {
     args = { ...asObj };
   } else if (typeof direct === "string" && direct.trim().length > 0) {
-    const inner = parseLooseObject(direct);
+    const inner = tryParse(direct);
     const innerObj = inner.ok ? asRecord(inner.value) : null;
-    if (innerObj !== null) args = { ...innerObj };
+    if (innerObj === null) return { reason: "arguments 不是合法 JSON 对象" };
+    args = { ...innerObj };
+  } else if (direct !== undefined) {
+    return { reason: "arguments 必须是 JSON 对象" };
   } else {
     const copy: Record<string, unknown> = { ...obj };
     delete copy.id;
@@ -870,23 +867,11 @@ export class ToolCallStreamParser {
       const bodyStart = markerEnd + 1;
       const close = findCloseTag(this.buffer, bodyStart, open.tag);
       if (close === null) {
-        if (!final) {
-          const hold = partialCloseSuffix(this.buffer, open.tag);
-          if (hold > 0) {
-            text += this.buffer.slice(0, this.buffer.length - hold);
-            this.buffer = this.buffer.slice(this.buffer.length - hold);
-          }
-          break;
-        }
+        if (!final) break; // Hold the entire candidate, including split close tags.
         this.truncated = true;
         const raw = this.buffer;
         this.buffer = "";
-        const openTagText = raw.slice(0, bodyStart);
-        const body = raw.slice(bodyStart);
-        const outcome = open.family === "xml"
-          ? candidateFromXml(openTagText, body, this.nextId())
-          : candidateFromJson(body, this.nextId());
-        record(raw, open.family, outcome, true);
+        record(raw, open.family, { reason: "工具调用标记未闭合，禁止执行" }, true);
         break;
       }
 

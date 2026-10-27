@@ -36,15 +36,16 @@ export function classifyFrame(raw: string): SseFrame {
   if (Array.isArray(obj.v) && typeof obj.o === "string" && obj.o === "patch") {
     return { kind: "patch", ops: obj.v as PatchOp[] };
   }
-  if (typeof obj.p === "string" && typeof obj.o === "string") {
-    return { kind: "update", path: obj.p, op: obj.o, value: obj.v };
-  }
   if (obj.v !== null && typeof obj.v === "object" && !Array.isArray(obj.v)) {
     const inner = obj.v as Record<string, unknown>;
     if (inner.message !== null && typeof inner.message === "object") {
       return { kind: "message", message: inner.message as ChatMessage };
     }
   }
+  if (typeof obj.p === "string" && typeof obj.o === "string") {
+    return { kind: "update", path: obj.p, op: obj.o, value: obj.v };
+  }
+  if (obj.error !== undefined) return { kind: "event", type: "error", data: obj };
   if (typeof obj.type === "string") {
     return { kind: "event", type: obj.type, data: obj };
   }
@@ -58,24 +59,28 @@ export async function* readSseData(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
+  let data: string[] = [];
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let idx: number;
-      while ((idx = buf.indexOf("\n\n")) >= 0) {
-        const block = buf.slice(0, idx);
-        buf = buf.slice(idx + 2);
-        for (const line of block.split("\n")) {
-          if (line.startsWith("data:")) {
-            const payload = line.slice(5).trim();
-            if (payload.length > 0) yield payload;
-          }
-        }
+      buf += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      let match: RegExpExecArray | null;
+      while ((match = /\r\n|\n|\r(?!$)/u.exec(buf)) !== null) {
+        const line = buf.slice(0, match.index);
+        buf = buf.slice(match.index + match[0].length);
+        if (line === "") {
+          if (data.length) yield data.join("\n");
+          data = [];
+        } else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /u, ""));
+      }
+      if (done) {
+        if (buf.startsWith("data:")) data.push(buf.replace(/\r$/u, "").slice(5).replace(/^ /u, ""));
+        if (data.length) yield data.join("\n");
+        break;
       }
     }
   } finally {
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }
@@ -92,7 +97,7 @@ export class TurnAccumulator {
   sawDone = false;
 
   private text = "";
-  private readonly fragments = new Map<string, string>();
+  failed = false;
   private status: string | null = null;
 
   push(frame: SseFrame): void {
@@ -107,6 +112,7 @@ export class TurnAccumulator {
         this.applyOp({ p: frame.path, o: frame.op, v: frame.value });
         break;
       case "event":
+        if (frame.type === "error" || frame.type === "conversation_error") this.failed = true;
         if (frame.type === "title_generation") {
           const cid = frame.data.conversation_id;
           if (typeof cid === "string") this.conversationId = cid;
@@ -123,10 +129,10 @@ export class TurnAccumulator {
     this.messageId = msg.id;
     if (typeof msg.status === "string") this.status = msg.status;
     const parts = msg.content?.parts;
-    if (Array.isArray(parts) && parts.length > 0) {
-      const joined = parts.filter((p): p is string => typeof p === "string").join("");
-      this.fragments.set(msg.id, joined);
-      this.text = joined;
+    this.parts.clear();
+    if (Array.isArray(parts)) {
+      parts.forEach((part, index) => { if (typeof part === "string") this.parts.set(index, part); });
+      this.text = this.renderParts();
     }
     this.readFinish(msg.metadata);
   }

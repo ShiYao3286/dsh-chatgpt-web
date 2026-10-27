@@ -7,15 +7,15 @@
 
 export interface FieldSpec {
   readonly key: string;
-  readonly kind: "number" | "enum";
+  readonly kind: "number" | "enum" | "text";
   /** enum 时的可选值。 */
   readonly options?: readonly string[];
 }
 
 /** 面板上暴露的字段，顺序即渲染顺序。 */
 export const FIELDS: readonly FieldSpec[] = [
-  { key: "transport", kind: "enum", options: ["node", "chromium"] },
-  { key: "devtoolsPort", kind: "number" },
+  { key: "transport", kind: "enum", options: ["node"] },
+  { key: "webModel", kind: "text" },
   { key: "softTurns", kind: "number" },
   { key: "hardTurns", kind: "number" },
   { key: "minIntervalMs", kind: "number" },
@@ -27,7 +27,7 @@ export const FIELDS: readonly FieldSpec[] = [
 /** 面板默认值，与 Host 侧 DEFAULT_CONFIG 保持一致。 */
 export const FIELD_DEFAULTS: Readonly<Record<string, unknown>> = {
   transport: "node",
-  devtoolsPort: 9222,
+  webModel: "auto",
   softTurns: 25,
   hardTurns: 40,
   minIntervalMs: 4000,

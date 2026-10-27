@@ -13,6 +13,9 @@ import "../tests/check-visibility.test.mjs";
 import "../tests/check-transport-select.test.mjs";
 import "../tests/check-config.test.mjs";
 import "../tests/check-client.test.mjs";
+import "../tests/check-client-runtime.test.mjs";
+import "../tests/check-host-adapter.test.mjs";
+import "../tests/check-safety-regression.test.mjs";
 import { summary } from "../tests/harness.mjs";
 
 summary();

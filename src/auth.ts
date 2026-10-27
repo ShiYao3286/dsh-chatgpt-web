@@ -63,11 +63,23 @@ export async function saveAuth(auth: StoredAuth, path: string = authPath()): Pro
   await rename(tmp, path);
 }
 
-/** 认不出 token 是否过期（它是 JWT 但服务端不按 exp 拒），只能靠使用失败来判定。 */
-export function authFingerprint(auth: StoredAuth): string {
-  // 只暴露前 8 位用于日志辨识，绝不打印完整 token。
-  const head = auth.accessToken.slice(0, 8);
-  return head + "…(len=" + auth.accessToken.length + ")";
+/** 只检查可识别 JWT 的 exp；不验证签名，不把未知格式误判为过期。 */
+export function authExpired(auth: StoredAuth, nowMs: number = Date.now()): boolean {
+  try {
+    const parts = auth.accessToken.split(".");
+    if (parts.length !== 3) return false;
+    const payload: unknown = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    if (payload === null || typeof payload !== "object") return false;
+    const exp = (payload as Record<string, unknown>).exp;
+    return typeof exp === "number" && Number.isFinite(exp) && exp * 1000 <= nowMs;
+  } catch {
+    return false;
+  }
+}
+
+/** 日志不得暴露 token 的任何片段或可关联的派生标识。 */
+export function authFingerprint(_auth: StoredAuth): string {
+  return "[credential redacted]";
 }
 
 /** 组装 cookie 头：存的东西在前，调用方可再追加。 */

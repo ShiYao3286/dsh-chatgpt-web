@@ -11,28 +11,47 @@
 
 import { NS, zh, en } from "./locales.ts";
 import { createCard } from "./card.tsx";
+import { FIELDS } from './fields.ts';
+// Resolved lexically by the host ModuleLoader factory, not a nonexistent global require.
+declare const require: (name: string) => unknown;
+
+export interface FormModel {
+  bind: (project: () => Record<string, unknown>) => unknown;
+  shell: () => Record<string, unknown>;
+  field: (key: string) => unknown;
+  actions: () => Record<string, unknown>;
+  dispose: () => void;
+}
+export function createController(scope: unknown, primitives: Record<string, unknown>) {
+  const Model = primitives.SettingsFormModel as new (scope: unknown, fields: unknown[]) => FormModel;
+  const number = primitives.settingsNumberField as (key: string) => unknown;
+  const text = primitives.settingsTextField as (key: string) => unknown;
+  const form = new Model(scope, FIELDS.map(field => (field.kind === 'number' ? number : text)(field.key)));
+  const store = form.bind(() => ({ ...form.shell(), ...Object.fromEntries(FIELDS.map(field => [field.key, form.field(field.key)])), authStatus: 'unchecked' }));
+  return { inject: () => ({ hooks: { chatGptWebCard: store }, ...form.actions() }), dispose: () => form.dispose() };
+}
 
 export { NS, zh, en };
 export const inject = ["slots", "locale", "configForms"];
 
 /** Host 侧 settings 命名空间（与 src/index.ts 注册的一致）。 */
-export const HOST_SETTINGS_NS = "chatgpt-web";
+export const HOST_SETTINGS_NS = "dsh-chatgpt-web";
 
 export const SLOT_ID = "chatgpt-web";
 export const SLOT_ORDER = 40;
 
-interface ClientContext {
+export interface ClientContext {
   locale: {
     bind: (ns: string) => (key: string) => string;
     register: (ns: string, dict: Record<string, unknown>) => void;
   };
   configForms: {
-    get: (ns: string) => unknown;
-    whileServed: (ns: readonly string[], fn: () => void) => void;
+    get: (ns: string) => { subscribe: (listener: () => void) => () => void; getSnapshot: () => { value: Record<string, unknown> } };
+    whileServed: (ns: readonly string[], fn: () => void) => (() => void) | void;
   };
   slots: {
-    inject: (name: string, fn: () => void) => void;
-    register: (def: Record<string, unknown>, component: unknown) => void;
+    inject: (name: string, fn: () => unknown) => unknown;
+    register: (def: Record<string, unknown>, component: unknown) => unknown;
   };
   effect: (fn: () => unknown, label?: string) => void;
 }
@@ -42,12 +61,9 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "ui-settings-chatgpt-web: dictionaries");
 
-  // require 由模块加载器注入；primitives 与 react 都由宿主提供。
-  const requireFn = (globalThis as { __ModuleLoader__?: { require?: (n: string) => unknown } }).__ModuleLoader__?.require;
-  const Card = createCard((name: string) => {
-    if (typeof requireFn === "function") return requireFn(name);
-    throw new Error("缺少模块加载器，无法解析 " + name);
-  });
+  const card = createController(ctx.configForms.get(HOST_SETTINGS_NS), require('@deepseek-ai/dsh-client-ui-primitives') as Record<string, unknown>);
+  const Card = createCard(require);
+  ctx.effect(() => () => card.dispose(), 'ui-settings-chatgpt-web: form subscription');
 
   ctx.effect(
     () =>
@@ -60,7 +76,7 @@ export function apply(ctx: ClientContext): void {
               order: SLOT_ORDER,
               label: () => t("title"),
               locale: NS,
-              inject: () => ({ hooks: {} }),
+              inject: () => card.inject(),
             },
             Card,
           ),

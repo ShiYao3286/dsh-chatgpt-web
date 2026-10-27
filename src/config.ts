@@ -18,6 +18,8 @@ export function configPath(): string {
 export interface PluginConfig {
   /** 传输层：node（默认，不需要浏览器）或 chromium（Cloudflare 拦截时用）。 */
   transport: TransportKind;
+  /** 网页私有模型标识；默认自动选择，不承诺具体底层模型。 */
+  webModel: string;
   /** 调试端口（仅 chromium 用）。 */
   devtoolsPort: number;
   /** 到这里主动轮换网页会话。 */
@@ -36,6 +38,7 @@ export interface PluginConfig {
 
 export const DEFAULT_CONFIG: PluginConfig = {
   transport: DEFAULT_TRANSPORT,
+  webModel: "auto",
   devtoolsPort: 9222,
   softTurns: 25,
   hardTurns: 40,
@@ -60,6 +63,7 @@ export function normalizeConfig(raw: unknown): PluginConfig {
   const maxIntervalMs = Math.max(int(o.maxIntervalMs, DEFAULT_CONFIG.maxIntervalMs, 0, 600_000), minIntervalMs);
   return {
     transport: normalizeTransport(o.transport) ?? DEFAULT_CONFIG.transport,
+    webModel: typeof o.webModel === "string" && /^[a-zA-Z0-9._-]{1,100}$/u.test(o.webModel) ? o.webModel : DEFAULT_CONFIG.webModel,
     devtoolsPort: int(o.devtoolsPort, DEFAULT_CONFIG.devtoolsPort, 1024, 65535),
     softTurns,
     hardTurns,

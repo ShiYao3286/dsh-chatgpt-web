@@ -153,7 +153,7 @@ export type BeginRejectReason = GateRejectReason | "probe-required";
 
 export type BeginOutcome =
   | { ok: true; plan: TurnPlan }
-  | { ok: false; reason: BeginRejectReason; waitMs: 0 };
+  | { ok: false; reason: BeginRejectReason; waitMs: number };
 
 export interface TurnResult {
   ok: boolean;
@@ -164,6 +164,8 @@ export interface TurnResult {
   kind?: FailureKind;
   status?: number | null;
   ttfbMs?: number | null;
+  /** Exact host-form assistant entry, already represented by the web reply. */
+  assistantEntry?: string;
   finishedAt?: number;
 }
 
@@ -470,7 +472,7 @@ export class BindingRuntime {
         const reason: GateRejectReason = acquired.reason === "ok" ? "busy" : acquired.reason;
         this.releaseOccupancy();
         this.noteRejection(reason, acquired.waitMs, startedAt);
-        return { ok: false, reason, waitMs: 0 };
+        return { ok: false, reason, waitMs: acquired.waitMs };
       }
 
       // 启动阶段就因为"陈旧绑定"轮换过的话，decideFeed 只会看到 binding===null 并报
@@ -512,7 +514,11 @@ export class BindingRuntime {
     const checkpointDue = !noop && cpPlan.due;
     const checkpointRequest = checkpointDue ? buildCheckpointRequest() : null;
     const reAnchor = action === "re-anchor" ? RE_ANCHOR_TEXT : null;
-    const userText = entries.length === 0 ? "" : entries[entries.length - 1];
+    // A host turn can append several tool results. Never reduce that delta to
+    // its final item. Rotation puts prior entries into the seed separately.
+    const userText = action === "rotate"
+      ? (entries.length === 0 ? "" : entries[entries.length - 1])
+      : delta.join("\n\n");
     const reuse = action !== "rotate" && this.binding !== null;
 
     // 轮换种子只带"已经发生过的历史"，当前这条用户文本作为新会话的第一条消息。
@@ -593,7 +599,7 @@ export class BindingRuntime {
         conversationId,
         parentMessageId: result.messageId,
         headHash: this.headHash,
-        lastEntries: [...plan.entries],
+        lastEntries: [...plan.entries, ...(result.assistantEntry ? [result.assistantEntry] : [])],
         turns: (rotated ? 0 : (this.binding as BindingState).turns) + 1,
         createdAt: rotated ? now : (this.binding as BindingState).createdAt,
       };
@@ -625,6 +631,7 @@ export class BindingRuntime {
   /** 调用方主动放弃（进程退出等）。不计数，只放锁。 */
   abortTurn(): void {
     if (!this.occupied) return;
+    this.dropBinding("aborted");
     this.currentPlan = null;
     this.releaseOccupancy();
     this.gate.releaseFailed();

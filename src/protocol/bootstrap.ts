@@ -97,6 +97,8 @@ export interface RenderBootstrapInput {
   readonly includeParameters?: boolean;
   /** 额外排除的工具名（会与 EXCLUDED_TOOL_NAMES 合并）。 */
   readonly excludeTools?: readonly string[];
+  /** Host-declared tools remain authoritative, including browser/search names. */
+  readonly includeHostTools?: boolean;
 }
 
 export interface BootstrapRender {
@@ -118,7 +120,7 @@ function clean(value: string): string {
  * 输出只依赖入参：不读时钟、不读环境变量、不用随机数 —— 这是它能参与 headHash 的前提。
  */
 export function renderBootstrap(input: RenderBootstrapInput): BootstrapRender {
-  const exclude = [...EXCLUDED_TOOL_NAMES, ...(input.excludeTools ?? [])];
+  const exclude = [...(input.includeHostTools ? [] : EXCLUDED_TOOL_NAMES), ...(input.excludeTools ?? [])];
   const catalog = renderToolCatalog(input.tools, {
     budgetChars: input.catalogBudgetChars,
     includeParameters: input.includeParameters !== false,

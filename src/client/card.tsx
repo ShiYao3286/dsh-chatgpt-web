@@ -15,6 +15,7 @@ export interface CardProps {
   /** 'summary' 时只渲染一句话（插件列表用）。 */
   readonly view?: "summary" | "form";
   readonly state: Record<string, unknown>;
+  readonly useChatGptWebCard?: (select: (state: Record<string, unknown>) => Record<string, unknown>) => Record<string, unknown>;
   readonly save: () => void;
   readonly discard: () => void;
   readonly edit: (key: string, text: string) => void;
@@ -38,6 +39,7 @@ export function buildFieldProps(props: CardProps) {
     const p = fieldProps(field, snapshotValue(props.state, field.key), disabled);
     return {
       ...p,
+      ...(typeof props.state[field.key] === 'object' && props.state[field.key] !== null ? props.state[field.key] as Record<string, unknown> : {}),
       label: props.t(field.key),
       hint: props.t(field.key + "Hint"),
       overriddenLabel: props.t("overridden"),
@@ -63,7 +65,8 @@ export function createCard(requirePrimitives: (name: string) => unknown) {
   const SettingsForm = prim.SettingsForm as (...a: unknown[]) => unknown;
   const SettingsValueField = prim.SettingsValueField as (...a: unknown[]) => unknown;
 
-  return function ChatGptWebCard(props: CardProps) {
+  return function ChatGptWebCard(input: CardProps) {
+    const props = { ...input, state: input.useChatGptWebCard ? input.useChatGptWebCard(state => state) : input.state };
     if (props.view === "summary") return summaryOf(props);
     const fields = buildFieldProps(props);
     return React.createElement(SettingsForm, {
@@ -77,6 +80,6 @@ export function createCard(requirePrimitives: (name: string) => unknown) {
       state: props.state,
       onSave: props.save,
       onDiscard: props.discard,
-    }, ...fields.map((f) => React.createElement(SettingsValueField, f)));
+    }, React.createElement('p', { role: 'status' }, props.t('authUnchecked')), ...fields.map((f) => React.createElement(SettingsValueField, f)));
   };
 }
