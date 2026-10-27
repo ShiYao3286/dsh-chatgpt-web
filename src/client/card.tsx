@@ -80,6 +80,6 @@ export function createCard(requirePrimitives: (name: string) => unknown) {
       state: props.state,
       onSave: props.save,
       onDiscard: props.discard,
-    }, React.createElement('p', { role: 'status' }, props.t('authUnchecked')), ...fields.map((f) => React.createElement(SettingsValueField, f)));
+    }, React.createElement('p', { role: 'status' }, props.t(props.state.authStatus === 'missing' ? 'authMissing' : props.state.authStatus === 'expired' ? 'authExpired' : 'authUnchecked')), ...fields.map((f) => React.createElement(SettingsValueField, f)));
   };
 }

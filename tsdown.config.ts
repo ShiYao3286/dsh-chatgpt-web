@@ -1,8 +1,16 @@
 import { defineConfig } from "tsdown";
+import ts from 'typescript';
 
 export default defineConfig([
   {
     entry: { index: "src/index.ts" },
+    plugins: [{
+      name: 'standard-remote-decorators',
+      transform(code, id) {
+        if (!id.replaceAll('\\', '/').endsWith('/src/status.ts')) return;
+        return { code: ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText, map: null };
+      },
+    }],
     outDir: "lib",
     format: "esm",
     target: "node22",
@@ -15,7 +23,7 @@ export default defineConfig([
   {
     entry: { client: "src/client/index.ts" },
     outDir: "lib",
-    format: "esm",
+    format: "cjs",
     target: "es2022",
     platform: "browser",
     dts: false,

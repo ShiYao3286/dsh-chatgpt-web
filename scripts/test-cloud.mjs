@@ -1,0 +1,20 @@
+// Public npm peers only; never requires extracted desktop assets.
+import '../tests/check-sha3.test.mjs';
+import '../tests/check-binding.test.mjs';
+import '../tests/check-gate.test.mjs';
+import '../tests/check-sse.test.mjs';
+import '../tests/check-conversation.test.mjs';
+import '../tests/check-transport.test.mjs';
+import '../tests/check-binding-runtime.test.mjs';
+import '../tests/check-protocol.test.mjs';
+import '../tests/check-page-pow.test.mjs';
+import '../tests/check-adapter.test.mjs';
+import '../tests/check-plugin.test.mjs';
+import '../tests/check-visibility.test.mjs';
+import '../tests/check-transport-select.test.mjs';
+import '../tests/check-config.test.mjs';
+import '../tests/check-client.test.mjs';
+import '../tests/check-host-adapter.test.mjs';
+import '../tests/check-safety-regression.test.mjs';
+import { summary } from '../tests/harness.mjs';
+summary();

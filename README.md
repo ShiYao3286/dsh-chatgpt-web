@@ -16,7 +16,9 @@
 
 ## 安装与构建
 
-已有依赖时可离线执行 `npm run typecheck`、`npm run build`、`npm test`（先构建再测，客户端回归执行构建资产）。包使用宿主的 dsh-llm/schemastery peer dependencies，不内嵌第二份宿主服务。
+从 Actions 的 `dsh-chatgpt-web-0.1.1-installable` artifact 下载并解压，取得 `dsh-chatgpt-web-0.1.1.tgz` 与 `SHA256SUMS`。tarball 已含 server/client 编译资产，不需本机构建；在目标 desktop profile 中使用包管理器安装该本地 tarball，并将 `dsh-chatgpt-web` 加入 `dsh.profile.bundles`。不要只下载 GitHub 源码 zip。
+
+开发和云端使用 `npm ci --ignore-scripts`、`npm run typecheck`、`npm run build`、`npm test`。仅依赖公开 npm peer；不内嵌宿主，不上传 ASAR、提取目录、凭证或本机路径。Actions 只编译、测试和上传安装包，绝不创建 tag/release。
 
 包中的 `cordis.patch.yml` 是 bundle 装配入口。profile 需要同时有包依赖和 `dsh.profile.bundles` 中的 `dsh-chatgpt-web`；只有 link 依赖不代表启用。完成后由用户自行正常退出、重启桌面应用。
 
@@ -28,7 +30,9 @@
 
 ## 设置
 
-使用宿主原生插件 Config schema 和真实 `configForms` / `plugins.item` 管理卡片，不使用不存在的 `settings.register`。浏览器入口由 `dsh.client` 与 `exports["./client"]` 装配，只有宿主提供 **dsh-chatgpt-web** 配置命名空间时显示。卡片通过宿主 `SettingsFormModel` 绑定字段、编辑/重置/保存/丢弃操作，显示可写性、无效输入与保存失败。认证状态明确标为“未检查”：卡片不读取凭证，尚未提供认证运行状态回传；实际调用的认证错误由 provider 脱敏返回，不能把卡片可见当作已登录。原 `~/.dsh/chatgpt-web/config.json` 不再作为此 adapter 的配置来源，文件不会被迁移或删除。
+直接注册客户端 `settings.section`，不因缺少配置命名空间而隐藏页面；配置不可用时保留宿主表单的 unavailable/只读状态。使用真实 native volatile Config 与 `SettingsFormModel`，通过已有 settings gateway 保存到 profile patch，包含 revision 冲突检测。保存后同一 adapter 在下一次请求读取新配置；进行中的请求使用不可变快照，单飞闸门和限速历史不重建。
+
+只读 `chatGptWebStatus/status` 使用宿主 `TypertRemoteService`/`Remote` 与既有 gateway 访问控制，不新增 HTTP 文件接口、不接受路径参数。只返回 `missing`、`expired`、`unchecked`；后者表示未在线验证，不代表凭证可用。卡片不返回 token/cookie，也不执行在线认证。原 `~/.dsh/chatgpt-web/config.json` 不再作为此 adapter 的配置来源，文件不会被迁移或删除。
 
 | 字段 | 默认值 | 说明 |
 |---|---|---|
@@ -51,7 +55,7 @@
 
 ## 本地测试
 
-`npm test` 为纯离线单元测试；真实 adapter 回归注入合成认证及内存传输，不访问凭证文件或网络。包含传输未完成时已输出正文、取消/断线保留正文但失败、工具延后和跨块标记测试。目标契约测试直接导入桌面 0.2.1-rc.3 的 app-boot、Cordis、LLM 和实际构建入口，验证原生兼容检查、注册/注销、模型元数据与工具流装配。客户端回归执行真实构建 factory，从目标 `dsh-web-frontend/dist/assets` 内嵌的原始实现抽取 `SettingsFormModel`，不再依赖旧 CLI 的独立 primitives 包；只替换纯 snapshot store，不启动宿主或浏览器。
+`npm test` 是云端离线回归，仅需公开 npm peer，不需要提取桌面资源。adapter 测试注入合成认证及内存传输，不访问凭证文件或网络。`npm run test:desktop` 是独立的真实桌面契约门禁，缺失目标宿主即失败，不 skip；`npm run test:all` 合并执行。真实宿主测试包含 Loader/root Include、SettingsForms、ConfigEditor 临时 profile 保存/revision 冲突/卸载、原生 volatile 更新保持 fiber/adapter、gateway source discovery 与非 owner 拒绝（只 prepare，不调用实际认证状态）。客户端回归执行真实构建 factory，从目标前端内嵌实现抽取 `SettingsFormModel`；表单快照单测不冒充真实 namespace，真实 namespace 由实际 Loader/Config schema 生成。
 
 离线目标目录默认从本项目 `node_modules/@deepseek-ai/dsh-llm` 的真实路径推导，亦可通过 `DSH_OFFLINE_HOST_ROOT` 指定目标 `@deepseek-ai` 目录，但必须与运行时依赖一致。测试强制核对 dsh-llm、app-boot、settings、plugin-manager、web-frontend 均为 **0.2.1-rc.3**，Schemastery 为 **3.18.5**；误指向旧 CLI 会失败。本机开发 junction 已指向从桌面安装 ASAR 提取的完整运行时，发布 manifest 不包含机器绝对路径。提取的桌面包没有随附 `.d.ts`；`src/desktop-contract.d.ts` 是依据目标实现整理的最小消费面（不是官方 SDK 类型），通过真实模块契约回归补充检查，不把缺失声明降级为 `any`。它不替换运行时导入，也不宣称覆盖完整宿主类型。
 

@@ -50,13 +50,13 @@ export class ChatGptWebAdapter extends LlmAdapter {
   private active = false;
   private readonly gate: Gate;
   private readonly sessions = new Map<string, { head: string; runtime: BindingRuntime }>();
-  private readonly config: PluginConfig;
+  private readonly readConfig: () => PluginConfig;
   private readonly dependencies: { loadAuth: typeof loadAuth; runTurn: typeof runTurn };
-  constructor(config: PluginConfig, dependencies: { loadAuth: typeof loadAuth; runTurn: typeof runTurn } = { loadAuth, runTurn }) {
+  constructor(config: PluginConfig | (() => PluginConfig), dependencies: { loadAuth: typeof loadAuth; runTurn: typeof runTurn } = { loadAuth, runTurn }) {
     super();
-    this.config = config;
+    this.readConfig = typeof config === 'function' ? config : () => config;
     this.dependencies = dependencies;
-    this.gate = new Gate({ ...DEFAULT_GATE, minIntervalMs: config.minIntervalMs, maxIntervalMs: config.maxIntervalMs, rateMaxInWindow: config.rateMaxInWindow });
+    this.gate = new Gate(DEFAULT_GATE);
   }
   override providerInfo(provider: string) { return { id: provider, name: 'ChatGPT 网页（非官方）' }; }
   override async listModels(provider: string) { return [{ provider, id: 'chatgpt-free', name: 'ChatGPT 网页（自动模型）', inputModalities: ['text' as const] }]; }
@@ -67,6 +67,9 @@ export class ChatGptWebAdapter extends LlmAdapter {
   override async *stream(options: GenerateOptions): AsyncGenerator<StreamChunk> {
     if (this.active) { yield { type: 'finish', reason: { kind: 'error', failure: { code: 'BUSY', message: '网页 provider 正在处理上一条请求；不排队。' } } }; return; }
     this.active = true;
+    // Capture once before the first await; live saves never mutate an in-flight turn.
+    const config = { ...this.readConfig() };
+    this.gate.configure({ minIntervalMs: config.minIntervalMs, maxIntervalMs: config.maxIntervalMs, rateMaxInWindow: config.rateMaxInWindow });
     let runtime: BindingRuntime | undefined;
     let finished = false;
     const controller = new AbortController();
@@ -87,20 +90,21 @@ export class ChatGptWebAdapter extends LlmAdapter {
         yield { type: 'block-end', index: 0, block: { type: 'text', text } };
         yield { type: 'finish', reason: { kind: 'stop' } }; return;
       }
-      if (this.config.transport !== 'node') throw new Error('MANUAL_BROWSER_REQUIRED');
+      if (config.transport !== 'node') throw new Error('MANUAL_BROWSER_REQUIRED');
       const auth = await this.dependencies.loadAuth();
       if (!auth || authExpired(auth)) throw new Error('AUTH');
       options.signal?.throwIfAborted();
       const tools: ToolSchema[] = options.tools ?? [];
-      const bootstrap = renderBootstrap({ env: { provider: options.provider, model: options.model, cwd: process.cwd(), platform: process.platform, today: new Date().toISOString().slice(0, 10) }, tools, includeHostTools: true, catalogBudgetChars: this.config.catalogBudgetChars });
+      const bootstrap = renderBootstrap({ env: { provider: options.provider, model: options.model, cwd: process.cwd(), platform: process.platform, today: new Date().toISOString().slice(0, 10) }, tools, includeHostTools: true, catalogBudgetChars: config.catalogBudgetChars });
       const head = bootstrap.text + '\n' + (options.system ?? '');
+      const signature = JSON.stringify([head, config.softTurns, config.hardTurns]);
       // Refuse instead of letting the legacy seed builder trim instructions/history.
       if (head.length + entries.join('\n').length + entries.length * 12 + 256 > MAX_SEED_CHARS) throw new Error('CONTEXT_LIMIT');
       const key = options.purpose === 'compaction' ? randomUUID() : options.sessionId ?? randomUUID();
       let session = this.sessions.get(key);
-      if (!session || session.head !== head) {
-        runtime = new BindingRuntime({ bootstrap: head, toolCatalog: bootstrap.catalog.text, protocolVersion: bootstrap.protocolVersion, limits: { softTurns: this.config.softTurns, hardTurns: this.config.hardTurns, recentSeedTurns: 100000 }, gate: this.gate, store: memoryBindingStore(), checkpointStore: memoryCheckpointStore(), ledger: memoryLedger() });
-        session = { head, runtime };
+      if (!session || session.head !== signature) {
+        runtime = new BindingRuntime({ bootstrap: head, toolCatalog: bootstrap.catalog.text, protocolVersion: bootstrap.protocolVersion, limits: { softTurns: config.softTurns, hardTurns: config.hardTurns, recentSeedTurns: 100000 }, gate: this.gate, store: memoryBindingStore(), checkpointStore: memoryCheckpointStore(), ledger: memoryLedger() });
+        session = { head: signature, runtime };
         // Bound memory. Evicted sessions restart safely from the caller's full history.
         if (this.sessions.size >= 64) this.sessions.delete(this.sessions.keys().next().value!);
         if (options.sessionId && !options.purpose) this.sessions.set(key, session);
@@ -120,7 +124,7 @@ export class ChatGptWebAdapter extends LlmAdapter {
       let transportError: unknown;
       let raw: Awaited<ReturnType<typeof runTurn>> | undefined;
       const notify = () => { wake?.(); wake = undefined; };
-      transportTask = this.dependencies.runTurn({ auth, prompt: begin.plan.payload, conversationId: begin.plan.conversationId, parentMessageId: begin.plan.parentMessageId, userMessageId: begin.plan.userMessageId, model: this.config.webModel, signal: controller.signal, headers: attributionHeaders(), onFrame: frame => {
+      transportTask = this.dependencies.runTurn({ auth, prompt: begin.plan.payload, conversationId: begin.plan.conversationId, parentMessageId: begin.plan.parentMessageId, userMessageId: begin.plan.userMessageId, model: config.webModel, signal: controller.signal, headers: attributionHeaders(), onFrame: frame => {
         controller.signal.throwIfAborted();
         const delta = live.push(frame);
         if (delta) { queue.push(delta); notify(); }

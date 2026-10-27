@@ -54,4 +54,4 @@ ok(en.title.length > 0, "英文有标题");
 ok(zh.transportHint.includes("不需要浏览器"), "提示语说明 Node 不需要浏览器");
 
 section("inject 声明");
-deepEq([...inject], ["slots", "locale", "configForms"], "三个必需服务");
+deepEq([...inject], ["slots", "locale", "configForms", "remote", "remote.chatGptWebStatus"], "原生设置和受控状态服务");

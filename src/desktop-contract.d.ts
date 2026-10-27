@@ -3,6 +3,10 @@
  * Not an upstream SDK declaration; tests/check-desktop-contract.test.mjs verifies runtime seams.
  * Runtime imports still resolve the actual host packages, never these declarations.
  */
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  export class TypertRemoteService { constructor(ctx: unknown, key: string); }
+  export function Remote(method: unknown, context: ClassMethodDecoratorContext): void;
+}
 declare module '@deepseek-ai/dsh-llm/brand' {
   export type ToolCallId = string & { readonly __toolCallId: unique symbol };
 }
@@ -39,6 +43,7 @@ declare module '@deepseek-ai/dsh-llm' {
 }
 declare module '@deepseek-ai/schemastery' {
   interface NativeSchema {
+    volatile(): NativeSchema;
     default(value: unknown): NativeSchema; description(text: string): NativeSchema;
     min(value: number): NativeSchema; max(value: number): NativeSchema; step(value: number): NativeSchema;
   }

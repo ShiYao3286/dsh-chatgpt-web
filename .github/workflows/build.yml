@@ -1,0 +1,42 @@
+name: Build installable plugin
+on:
+  push:
+    branches: [fix/streaming-and-settings-card]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: npm pack --ignore-scripts
+      - name: Inspect and install package in clean directory
+        shell: bash
+        run: |
+          tar -tzf dsh-chatgpt-web-*.tgz > package-files.txt
+          grep -Fx 'package/lib/index.js' package-files.txt
+          grep -Fx 'package/lib/client.js' package-files.txt
+          grep -Fx 'package/cordis.patch.yml' package-files.txt
+          if grep -E 'node_modules|auth\.json|app\.asar|\.env$|\.dsh-desktop' package-files.txt; then exit 1; fi
+          mkdir /tmp/plugin-install
+          npm install --prefix /tmp/plugin-install --ignore-scripts "$PWD"/dsh-chatgpt-web-*.tgz
+          node --input-type=module -e "await import('file:///tmp/plugin-install/node_modules/dsh-chatgpt-web/lib/index.js')"
+          sha256sum dsh-chatgpt-web-*.tgz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-chatgpt-web-0.1.1-installable
+          path: |
+            dsh-chatgpt-web-*.tgz
+            SHA256SUMS
+            package-files.txt
+          if-no-files-found: error

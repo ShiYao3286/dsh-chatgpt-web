@@ -1,5 +1,5 @@
 import { ok, eq, section } from "./harness.mjs";
-import { name, inject, describePlugin, apply, SETTINGS_NS, CONFIG_DEFAULTS, describeConfig } from "../src/index.ts";
+import { name, inject, describePlugin, apply, SETTINGS_NS, CONFIG_DEFAULTS, describeConfig } from "../lib/index.js";
 
 section("插件元数据");
 eq(name, "dsh-chatgpt-web", "插件名");

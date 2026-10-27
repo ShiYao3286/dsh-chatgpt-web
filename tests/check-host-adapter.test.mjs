@@ -36,6 +36,26 @@ while (!unblock) await new Promise(resolve => setImmediate(resolve));
 chunks = await collect(busy);
 assert.equal(chunks.at(-1).reason.failure.code, 'BUSY');
 unblock(); await first;
+let liveConfig = { ...config, webModel: 'before-save' };
+let releaseLive;
+const seenModels = [];
+const live = new ChatGptWebAdapter(() => liveConfig, { loadAuth: async () => { await new Promise(resolve => { releaseLive = resolve; }); return auth; }, runTurn: async input => { seenModels.push(input.model); return response('saved'); } });
+const gateIdentity = live.gate;
+const running = collect(live);
+while (!releaseLive) await new Promise(resolve => setImmediate(resolve));
+liveConfig = { ...config, webModel: 'after-save', rateMaxInWindow: 1 };
+assert.equal((await collect(live)).at(-1).reason.failure.code, 'BUSY');
+releaseLive(); await running;
+assert.deepEqual(seenModels, ['before-save'], 'in-flight turn retains pre-save snapshot');
+assert.equal(live.gate, gateIdentity);
+const next = collect(live);
+while (!releaseLive) await new Promise(resolve => setImmediate(resolve));
+// The rate check occurs after synthetic auth; resolve that stage when entered.
+await new Promise(resolve => setImmediate(resolve));
+releaseLive();
+const nextChunks = await next;
+assert.equal(nextChunks.at(-1).reason.kind, 'error', 'saved lower rate cap preserves prior request history');
+assert.deepEqual(seenModels, ['before-save']);
 assert.match(serializeMessage({ role: 'tool', toolCallId: 't1', isError: true, content: [{ type: 'text', text: 'failed' }] }), /"isError":true/);
 const frame = text => response(text).frames[0];
 async function bounded(promise) {

@@ -69,14 +69,13 @@ client.apply({
     whileServed(names, callback) { assert.deepEqual(Array.from(names), ['dsh-chatgpt-web']); served = callback; }
   },
   slots: {
-    inject(name, callback) { assert.equal(name, 'plugins.item'); return callback(); },
+    inject(name, callback) { assert.equal(name, 'settings.section'); return callback(); },
     register(def, component) { definition = def; Component = component; }
   },
   effect(callback) { const dispose = callback(); if (typeof dispose === 'function') disposers.push(dispose); }
 });
-assert.equal(definition, undefined, 'card hidden until namespace served');
-served();
-assert.equal(definition.name, 'plugins.item');
+assert.ok(definition, 'section is visible even when the host namespace is unavailable');
+assert.equal(definition.name, 'settings.section');
 assert.equal(definition.id, 'chatgpt-web');
 const injected = definition.inject();
 const store = injected.hooks.chatGptWebCard;

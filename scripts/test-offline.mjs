@@ -15,6 +15,7 @@ import "../tests/check-config.test.mjs";
 import "../tests/check-client.test.mjs";
 import "../tests/check-desktop-contract.test.mjs";
 import "../tests/check-client-runtime.test.mjs";
+import "../tests/check-settings-host.test.mjs";
 import "../tests/check-host-adapter.test.mjs";
 import "../tests/check-safety-regression.test.mjs";
 import { summary } from "../tests/harness.mjs";

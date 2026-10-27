@@ -1,19 +1,10 @@
-/**
- * ChatGPT 网页版的设置卡片（浏览器侧）。
- *
- * 注册进 DSH 设置面板的 plugins.item 插槽，形态对齐官方 settings 插件：
- *   inject: ["slots", "locale", "configForms"]
- *   ctx.slots.register({ name: "plugins.item", id, order, label, locale, inject }, Card)
- *
- * 只有 Host 侧注册了同名 settings 命名空间（configForms.whileServed）时才会出现，
- * 所以没装/没启用时不留下任何痕迹。
- */
+/** ChatGPT Web settings.section dictionaries; the page is not namespace-gated. */
 
 /** 字典命名空间。 */
 export const NS = "settings.chatgptWeb";
 
 /** 需要注入的浏览器服务。 */
-export const inject = ["slots", "locale", "configForms"];
+export const inject = ["slots", "locale", "configForms", "remote", "remote.chatGptWebStatus"];
 
 /** 中文文案。 */
 export const zh = {
@@ -23,7 +14,9 @@ export const zh = {
   transportHint: "Node 直连不需要浏览器；遇到挑战须人工处理，不自动回落或绕过。",
   webModel: '网页模型标识',
   webModelHint: '默认 auto；不保证具体底层模型。',
-  authUnchecked: '认证状态：未检查。此卡片不读取凭证；实际调用失败时由 provider 返回脱敏错误，请手工恢复登录。',
+  authMissing: '认证状态：缺少凭证。请手工登录并捕获。',
+  authExpired: '认证状态：本地凭证已过期。请手工重新登录并捕获。',
+  authUnchecked: '认证状态：未在线验证。仅本地检查，不保证凭证可用。',
   minIntervalMs: '最小请求间隔（毫秒）',
   minIntervalMsHint: '从上次完成开始计时。',
   maxIntervalMs: '最大请求间隔（毫秒）',
@@ -64,7 +57,9 @@ export const en = {
   transportHint: "Node needs no browser; challenges require manual recovery, without fallback or bypass.",
   webModel: 'Web model identifier',
   webModelHint: 'Default: auto. No underlying model guarantee.',
-  authUnchecked: 'Authentication: unchecked. This card does not read credentials. Actual provider calls report sanitized errors; restore login manually.',
+  authMissing: 'Authentication: missing. Sign in and capture manually.',
+  authExpired: 'Authentication: locally expired. Sign in and capture again.',
+  authUnchecked: 'Authentication: not verified online. Local inspection does not prove validity.',
   minIntervalMs: 'Minimum request interval (ms)',
   minIntervalMsHint: 'Measured from the previous completion.',
   maxIntervalMs: 'Maximum request interval (ms)',
