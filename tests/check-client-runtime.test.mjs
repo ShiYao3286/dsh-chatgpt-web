@@ -9,14 +9,42 @@ assert.equal(pkg.exports['./client'].default, './lib/client.js');
 assert.ok(existsSync(new URL(pkg.exports['./client'].default, root)));
 assert.ok(existsSync(new URL(pkg.main, root)));
 // Execute the installed host's actual pure form model, without importing CSS/React or starting a host.
-const hostRoot = process.env.DSH_OFFLINE_HOST_ROOT || 'C:/Users/32863/AppData/Roaming/npm/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai';
-const host = readFileSync(hostRoot + '/dsh-client-ui-primitives/lib/index.js', 'utf8');
-const start = host.indexOf('function settingsNumberField(');
-const end = host.indexOf('//#endregion', host.indexOf('var SettingsFormModel = class', start));
-assert.ok(start > 0 && end > start, 'installed host model region found');
-const primitives = vm.runInNewContext(host.slice(start, end) + '\n({SettingsFormModel,settingsNumberField,settingsTextField})', {
-  createSnapshotStore(value) { return { getSnapshot: () => value, set(next) { value = next; } }; }
+const { frontendSource, source } = await import('./desktop-host.mjs');
+const host = frontendSource();
+// Desktop embeds primitives in the Vite frontend, not a standalone package.
+const exports = Object.fromEntries(['SettingsFormModel', 'settingsNumberField', 'settingsTextField'].map(key => {
+  const match = host.match(new RegExp(key + ':([A-Za-z_$][\\w$]*)'));
+  assert.ok(match, 'target primitive export ' + key);
+  return [key, match[1]];
+}));
+const start = host.indexOf('function ' + exports.settingsNumberField + '(');
+const end = host.indexOf('}};const ', host.indexOf('var ' + exports.SettingsFormModel + '=class', start)) + 2;
+assert.ok(start > 0 && end > start, 'desktop bundled model region found');
+const region = host.slice(start, end + 1);
+const storeName = region.match(/bind\(\w+\)\{const \w+=(\w+)\(/)[1];
+const primitives = vm.runInNewContext(region + '\n({' + Object.entries(exports).map(([key, value]) => key + ':' + value).join(',') + '})', {
+  [storeName](value) { return { getSnapshot: () => value, set(next) { value = next; } }; }
 });
+assert.ok(host.includes('"@deepseek-ai/dsh-client-ui-primitives":'), 'actual frontend supplies factory dependency');
+assert.match(source('dsh-client-ui-plugin-manager', 'lib/client.js'), /"plugins\.item"/);
+const settingsSource = source('dsh-client-ui-settings', 'lib/client.js');
+const gateStart = settingsSource.indexOf('whileServed(namespaces, register) {');
+const gateEnd = settingsSource.indexOf('\n\t\t\t}', gateStart);
+assert.ok(gateStart > 0 && gateEnd > gateStart);
+const targetGate = vm.runInNewContext('({' + settingsSource.slice(gateStart, gateEnd) + '\n}})').whileServed;
+let gateNamespaces = [], syncGate, liveCards = 0, gateSubscriptions = 0;
+const gateOff = targetGate.call({ mirror: {
+  getSnapshot: () => ({ view: { namespaces: gateNamespaces.map(ns => ({ ns })) } }),
+  subscribe(fn) { syncGate = fn; gateSubscriptions++; return () => gateSubscriptions--; }, ensure() {}
+} }, ['dsh-chatgpt-web'], () => { liveCards++; return () => liveCards--; });
+assert.equal(liveCards, 0);
+gateNamespaces = ['dsh-chatgpt-web']; syncGate(); syncGate();
+assert.equal(liveCards, 1, 'actual target gate registers once');
+gateNamespaces = []; syncGate();
+assert.equal(liveCards, 0, 'actual target gate unregisters absent namespace');
+gateNamespaces = ['dsh-chatgpt-web']; syncGate(); gateOff();
+assert.equal(liveCards, 0);
+assert.equal(gateSubscriptions, 0);
 let registration;
 vm.runInNewContext(readFileSync(new URL('lib/client.js', root), 'utf8'), { window: { __ModuleLoader__: { load(value) { registration = value; } } } });
 assert.equal(registration.id, pkg.name);

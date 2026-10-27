@@ -4,7 +4,7 @@
 
 ## 实际接入
 
-入口继承并注册真实 `@deepseek-ai/dsh-llm` 的 `LlmAdapter`，按本机宿主 **0.1.7-rc.2** 接口验证；原生 Config 使用 `@deepseek-ai/schemastery` **3.18.4**。桌面 GUI 的具体发行版未核验，重启后的加载与真实网络可用性需要用户验证。
+入口继承并注册真实 `@deepseek-ai/dsh-llm` 的 `LlmAdapter`。当前兼容范围精确限定为桌面 **0.2.1-rc.3**，Schemastery **3.18.5**；不再将旧 CLI 0.1.7-rc.2 的测试作为桌面兼容证据。已从实际安装的桌面 ASAR 离线提取目标模块，验证兼容检查无 exemption 通过、原生 Config、真实 Cordis 注册/注销、prepared-call、BlockAssembler 及桌面前端内嵌表单模型。**未重启应用，未验证 GUI、实际认证或真实网络可用性**。其他版本尚未验证，不使用宽泛 peer 范围承诺兼容。
 
 - 模型目录、resolveModel、继承 prepareCall、标准 text/tool-call/finish chunks。
 - provider 级单飞，不排队；按 Harness sessionId 隔离网页绑定。
@@ -51,6 +51,10 @@
 
 ## 本地测试
 
-`npm test` 为纯离线单元测试；真实 adapter 回归注入合成认证及内存传输，不访问凭证文件或网络。包含传输未完成时已输出正文、取消/断线保留正文但失败、工具延后和跨块标记测试。客户端回归运行真实构建 factory，并从本机安装包抽取纯 `SettingsFormModel` 测试控制器（不启动宿主、不渲染浏览器）；默认宿主包根为本机 DSH npm 安装位置，可用 `DSH_OFFLINE_HOST_ROOT` 指定 `@deepseek-ai` 包目录。`npm run build` 生成 `lib/index.js` 与 `lib/client.js`；构建目录被 Git 忽略，需要提交源码后本地/打包时重新构建。离线检查不代替桌面重启后的 GUI/真实认证验证。
+`npm test` 为纯离线单元测试；真实 adapter 回归注入合成认证及内存传输，不访问凭证文件或网络。包含传输未完成时已输出正文、取消/断线保留正文但失败、工具延后和跨块标记测试。目标契约测试直接导入桌面 0.2.1-rc.3 的 app-boot、Cordis、LLM 和实际构建入口，验证原生兼容检查、注册/注销、模型元数据与工具流装配。客户端回归执行真实构建 factory，从目标 `dsh-web-frontend/dist/assets` 内嵌的原始实现抽取 `SettingsFormModel`，不再依赖旧 CLI 的独立 primitives 包；只替换纯 snapshot store，不启动宿主或浏览器。
+
+离线目标目录默认从本项目 `node_modules/@deepseek-ai/dsh-llm` 的真实路径推导，亦可通过 `DSH_OFFLINE_HOST_ROOT` 指定目标 `@deepseek-ai` 目录，但必须与运行时依赖一致。测试强制核对 dsh-llm、app-boot、settings、plugin-manager、web-frontend 均为 **0.2.1-rc.3**，Schemastery 为 **3.18.5**；误指向旧 CLI 会失败。本机开发 junction 已指向从桌面安装 ASAR 提取的完整运行时，发布 manifest 不包含机器绝对路径。提取的桌面包没有随附 `.d.ts`；`src/desktop-contract.d.ts` 是依据目标实现整理的最小消费面（不是官方 SDK 类型），通过真实模块契约回归补充检查，不把缺失声明降级为 `any`。它不替换运行时导入，也不宣称覆盖完整宿主类型。
+
+`npm run build` 生成 `lib/index.js` 与 `lib/client.js`；构建目录被 Git 忽略，需要本地/打包时重新构建。离线检查不代替桌面正常重启后的 GUI/真实认证验证。
 
 MIT

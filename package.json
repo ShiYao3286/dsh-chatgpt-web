@@ -41,8 +41,8 @@
     "@types/node": "24.13.3"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-llm": "^0.1.7-rc.2",
-    "@deepseek-ai/schemastery": "^3.18.4"
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
+    "@deepseek-ai/schemastery": "3.18.5"
   },
   "dsh": {
     "client": {

@@ -1,4 +1,4 @@
-/** Harness 0.1.7-rc.2 adapter. No browser launch, credential writes or challenge solving. */
+/** Desktop Harness 0.2.1-rc.3 adapter. No browser launch, credential writes or challenge solving. */
 import { randomUUID } from 'node:crypto';
 import { LlmAdapter, attributionHeaders } from '@deepseek-ai/dsh-llm';
 import type { GenerateOptions, StreamChunk, RequestMessage, ToolSchema } from '@deepseek-ai/dsh-llm/types';
@@ -62,7 +62,7 @@ export class ChatGptWebAdapter extends LlmAdapter {
   override async listModels(provider: string) { return [{ provider, id: 'chatgpt-free', name: 'ChatGPT 网页（自动模型）', inputModalities: ['text' as const] }]; }
   override async resolveModel(provider: string, model: string, signal?: AbortSignal) {
     signal?.throwIfAborted();
-    return { provider, id: model, name: 'ChatGPT 网页（自动模型）', context: { contextWindow: CONTEXT_WINDOW }, defaultMaxTokens: DEFAULT_MAX_TOKENS };
+    return { provider, id: model, name: 'ChatGPT 网页（自动模型）', inputModalities: ['text' as const], context: { contextWindow: CONTEXT_WINDOW }, defaultMaxTokens: DEFAULT_MAX_TOKENS };
   }
   override async *stream(options: GenerateOptions): AsyncGenerator<StreamChunk> {
     if (this.active) { yield { type: 'finish', reason: { kind: 'error', failure: { code: 'BUSY', message: '网页 provider 正在处理上一条请求；不排队。' } } }; return; }
