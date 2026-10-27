@@ -19,6 +19,10 @@ export function profileDir(): string {
   return join(webLoginRoot(), "browser-profile");
 }
 
+export function authPath(): string {
+  return join(webLoginRoot(), "auth.json");
+}
+
 export function statePath(): string {
   return join(webLoginRoot(), "state.json");
 }

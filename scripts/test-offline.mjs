@@ -10,6 +10,7 @@ import "../tests/check-page-pow.test.mjs";
 import "../tests/check-adapter.test.mjs";
 import "../tests/check-plugin.test.mjs";
 import "../tests/check-visibility.test.mjs";
+import "../tests/check-transport-select.test.mjs";
 import { summary } from "../tests/harness.mjs";
 
 summary();

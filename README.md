@@ -8,15 +8,25 @@
 
 ```
 DSH agent loop → ctx.llm → [chatgpt-web 适配器] → chatgpt.com
-                                  ├─ CDP 驱动真实页面发请求（指纹一致）
-                                  ├─ PoW（SHA3-512，页面内求解）
+                                  ├─ 默认：Node 直连（不需要浏览器）
+                                  ├─ PoW（SHA3-512）
                                   ├─ sentinel 挑战 + Bearer token
                                   └─ 提示词工具协议 ⇄ tool-call
 ```
 
-它**不**调用 OpenAI API，而是复用你在浏览器里已有的登录态。请求由插件自己构造，
-但**通过 CDP 在真实页面上下文里发出** —— 只有这样 cookie 与浏览器指纹才能带上，
-否则服务端会把请求判成未登录访客（`persona: chatgpt-noauth`）。
+它**不**调用 OpenAI API，而是复用你在浏览器里登录过一次之后捕获的登录态。
+
+### 为什么默认不需要浏览器
+
+最初的实现必须常驻一个可调试的 Edge/Chrome（担心 Cloudflare 识别 TLS 指纹）。
+**这个前提是被实测推翻的**：把全部调试浏览器关掉、调试端口停掉之后，纯 Node 直连仍然
+`status 200`、拿到完整 SSE、模型真实回复 `PONG`。
+
+所以现在的形态是：**登录一次 → 捕获凭证落盘 → 之后纯 Node 跑，不挂浏览器**。
+只有被 Cloudflare 拦（返回 HTML 挑战页）才回落到浏览器代理。
+
+顺带一个证据：sentinel 里 `turnstile.required: true`，但我们**不带 turnstile token 也能通过** ——
+真正的门槛只有 PoW 与 Bearer。
 
 ## 三条不可协商的设计前提
 
@@ -41,20 +51,30 @@ npm test          # 离线套件，不碰网络
 dsh plugin --profile desktop add ./dsh-chatgpt-web
 ```
 
-## 登录一次
+## 登录一次（只做一次）
 
-插件需要一个**已登录 chatgpt.com 的浏览器**。它默认复用 `127.0.0.1:9222` 上的调试端口；
-没有就自己拉起一个（`detached + unref`，DSH 退出不会带走浏览器）。
+凭证捕获之后会落盘到 `~/.dsh/chatgpt-web/auth.json`，**之后不再需要浏览器**。
 
 ```bash
-# 手动起一个调试浏览器（一次就够，之后插件会复用）
-"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" \
-  --remote-debugging-port=9222 \
-  --user-data-dir="%USERPROFILE%\.dsh\chatgpt-web\browser-profile" \
-  https://chatgpt.com/
+node scripts/capture-auth.mjs
 ```
 
-在弹出的窗口里正常登录即可。凭证与状态都在 `~/.dsh/chatgpt-web/`，不进仓库。
+它会拉起一个浏览器窗口（独立 profile，不碰你日常 Edge 的 cookie 和历史），
+你在里面正常登录 chatgpt.com，脚本轮询到登录成功后自动捕获：
+accessToken、cookie、data-build、UA、语言、套餐类型。
+
+> **凭证与浏览器 profile 是解耦的。** 删掉浏览器 profile 也不用重新登录 —— 凭证在 auth.json 里。
+> 反过来，auth.json 丢了就得重登一次。
+
+## 端到端冒烟
+
+```bash
+node scripts/smoke.mjs                       # 默认走 Node，不需要浏览器
+node scripts/smoke.mjs --chromium            # 强制走浏览器代理
+node scripts/smoke.mjs --prompt="你好"        # 自定义提示词
+```
+
+会真实消耗 1 条免费额度。
 
 ## 选模型
 
@@ -62,20 +82,13 @@ dsh plugin --profile desktop add ./dsh-chatgpt-web
 
 免费档只有一条模型：思考与否是同一模型的开关，不是两个模型。
 
-## 端到端冒烟
-
-```bash
-node scripts/smoke.mjs                      # 真实发一轮，会消耗 1 条免费额度
-node scripts/smoke.mjs --prompt="你好"       # 自定义提示词
-```
-
 ## 已知限制
 
 - **免费额度**：具体条数随账号与时段变化，插件按保守水位轮换（默认 25 轮软水位 / 40 轮硬上限）。
 - **单飞**：同一时刻只能有一轮在跑。这是设计前提，不是可调参数。
-- **必须能启动 Edge / Chrome**：PoW 与 sentinel 都要在真实页面里完成。
-- **后台标签页会被节流**：浏览器最小化时页面里的 fetch 会挂住。插件会覆写页面可见性解除节流，
-  但仍建议不要关闭浏览器。
+- **accessToken 会过期**：过期后请求返回 `AUTH`，需要重跑一次 `capture-auth.mjs`。
+- **Cloudflare 可能收紧**：届时 Node 直连会被返回 HTML 挑战页，插件会报 `cloudflare` 失败，
+  此时改用 `--chromium` 或设置 `transport: chromium` 走浏览器代理。
 - **封号风险**：这是本方案的固有成本，代码里消不掉。不建议用新号，不建议多开。
 - **工具协议是提示词模拟的**，网页端没有原生 function calling；模型偶发格式漂移由解析器兜底。
 
@@ -83,12 +96,13 @@ node scripts/smoke.mjs --prompt="你好"       # 自定义提示词
 
 | 层 | 位置 | 职责 |
 |---|---|---|
-| 传输 | `src/transport/` | CDP 客户端、浏览器进程、页面事实、健康自愈 |
+| 凭证 | `src/auth.ts` | accessToken / cookie / data-build 落盘与归一化 |
+| 传输 | `src/transport/` | `node-http.ts` 直连（主路径）、`cdp.ts`/`browser.ts` 浏览器代理（回落） |
 | 线缆 | `src/wire/` | 请求构造、SSE patch 解析、页面侧运行时 |
 | 协议 | `src/protocol/` | bootstrap 渲染、工具目录预算、工具调用解析、未执行检测 |
 | 绑定 | `src/binding/` | 三动作决策（append / re-anchor / rotate）、检查点、重启校验 |
 | 闸门 | `src/gate/` | 单飞、随机间隔、长休、滚动窗口、调用台账 |
-| 适配器 | `src/adapter.ts` | 模型目录、purpose 分流、失败码映射 |
+| 适配器 | `src/adapter.ts` | 模型目录、purpose 分流、失败码映射、传输选择 |
 
 ## 测试
 

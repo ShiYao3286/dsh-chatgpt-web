@@ -17,6 +17,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Cdp } from "./transport/cdp.ts";
+import type { StoredAuth } from "./auth.ts";
+import { nodeTurn } from "./transport/node-http.ts";
+import { DEFAULT_TRANSPORT, type TransportKind } from "./transport/select.ts";
 import { failureCodeOf, interpretFrames, type RawTurnOutcome } from "./wire/turn.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -83,15 +86,53 @@ export function localCompactionSummary(input: { turns: number; lastUserText: str
 /* ------------------------------------------------------------------ */
 
 export interface RunTurnInput {
-  readonly cdp: Cdp;
+  /** 已捕获的凭证；Node 路径必需。 */
+  readonly auth: StoredAuth;
   readonly prompt: string;
   readonly conversationId: string | null;
   readonly parentMessageId: string | null;
   readonly userMessageId: string;
   readonly model: string;
+  /** 传输层偏好。默认 node；Chromium 仅在 Cloudflare 拦截时使用。 */
+  readonly transport?: TransportKind;
+  /** chromium 传输必需。 */
+  readonly cdp?: Cdp;
 }
 
+/**
+ * 跑一轮。默认走 Node 直连；只有在显式选了 chromium（或 Node 撞上 Cloudflare）才用浏览器。
+ *
+ * 实测依据：关闭全部调试浏览器后，Node 直连仍 status 200 并拿到真实回复，
+ * 所以"必须常驻浏览器"这个前提不成立 —— 浏览器降级为可选的保险。
+ */
 export async function runTurn(input: RunTurnInput): Promise<RawTurnOutcome> {
+  const kind: TransportKind = input.transport ?? DEFAULT_TRANSPORT;
+
+  if (kind === "node") {
+    const r = await nodeTurn({
+      auth: input.auth,
+      prompt: input.prompt,
+      conversationId: input.conversationId,
+      parentMessageId: input.parentMessageId,
+      userMessageId: input.userMessageId,
+      model: input.model,
+    });
+    return {
+      status: r.status,
+      frames: r.frames,
+      sawDone: r.sawDone,
+      ttfbMs: r.ttfbMs,
+      totalMs: r.totalMs,
+      // cloudflare 是 Node 独有的失败类别；上层据此决定是否回落。
+      failure: r.failure,
+      errorBody: r.errorBody,
+    } as RawTurnOutcome;
+  }
+
+  if (input.cdp === undefined) {
+    throw new Error("chromium 传输需要传入 cdp");
+  }
+
   const { pow, turn } = loadPageSources();
   const request = {
     prompt: input.prompt,

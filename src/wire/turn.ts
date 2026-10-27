@@ -20,6 +20,8 @@ export type TurnFailureKind =
   | "network"
   | "no-token"
   | "pow-failed"
+  /** Node 直连被 Cloudflare 拦（HTML 挑战页）—— 上层应回落到浏览器。 */
+  | "cloudflare"
   /** 服务端 200 + [DONE]，但正文是空的/纯空白 —— 重试可能有用，不是成功。 */
   | "empty-response"
   /** 流在没有 [DONE] 的情况下结束 —— 内容可能只到一半，绝不能当成功。 */
@@ -100,6 +102,8 @@ export function failureCodeOf(kind: TurnFailureKind | null): string | null {
       return "QUOTA";
     case "network":
       return "CONNECTION";
+    case "cloudflare":
+      return "PROVIDER_ERROR";
     case "pow-failed":
       return "PROVIDER_ERROR";
     case "empty-response":
