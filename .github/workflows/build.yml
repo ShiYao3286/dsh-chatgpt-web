@@ -34,7 +34,7 @@ jobs:
           sha256sum dsh-chatgpt-web-*.tgz > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: dsh-chatgpt-web-0.1.1-installable
+          name: dsh-chatgpt-web-0.1.2-installable
           path: |
             dsh-chatgpt-web-*.tgz
             SHA256SUMS
