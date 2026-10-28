@@ -1,14 +1,15 @@
 /**
  * 设置卡片组件（React）。
  *
- * 这里刻意写得很薄：所有可测的逻辑都在 fields.ts / locales.ts 里，
- * 这个文件只负责把字段铺成 DSH 的表单组件。
+ * 这里刻意写得很薄：所有可测的逻辑都在 fields.ts / login-view.ts / locales.ts 里，
+ * 这个文件只负责把字段和登录面板铺成 DSH 的表单组件。
  *
  * 依赖 @deepseek-ai/dsh-client-ui-primitives —— 它由宿主提供，不在本包的 node_modules 里，
  * 所以用 require 取而不是 import（与官方 settings 插件一致）。
  */
 
 import { FIELDS, fieldProps, editable } from "./fields.ts";
+import { createLoginPanel } from "./login-panel.ts";
 
 export interface CardProps {
   readonly t: (key: string) => string;
@@ -64,11 +65,13 @@ export function createCard(requirePrimitives: (name: string) => unknown) {
   const React = requirePrimitives("react") as { createElement: (...a: unknown[]) => unknown };
   const SettingsForm = prim.SettingsForm as (...a: unknown[]) => unknown;
   const SettingsValueField = prim.SettingsValueField as (...a: unknown[]) => unknown;
+  const LoginPanel = createLoginPanel(requirePrimitives);
 
   return function ChatGptWebCard(input: CardProps) {
     const props = { ...input, state: input.useChatGptWebCard ? input.useChatGptWebCard(state => state) : input.state };
     if (props.view === "summary") return summaryOf(props);
     const fields = buildFieldProps(props);
+    // 登录面板放在表单最上面：这是使用插件的第一个动作，比调参优先。
     return React.createElement(SettingsForm, {
       labels: {
         unavailable: props.t("unavailable"),
@@ -80,6 +83,6 @@ export function createCard(requirePrimitives: (name: string) => unknown) {
       state: props.state,
       onSave: props.save,
       onDiscard: props.discard,
-    }, React.createElement('p', { role: 'status' }, props.t(props.state.authStatus === 'missing' ? 'authMissing' : props.state.authStatus === 'expired' ? 'authExpired' : 'authUnchecked')), ...fields.map((f) => React.createElement(SettingsValueField, f)));
+    }, React.createElement(LoginPanel, { t: props.t }), ...fields.map((f) => React.createElement(SettingsValueField, f)));
   };
 }

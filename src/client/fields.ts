@@ -22,6 +22,7 @@ export const FIELDS: readonly FieldSpec[] = [
   { key: "maxIntervalMs", kind: "number" },
   { key: "rateMaxInWindow", kind: "number" },
   { key: "catalogBudgetChars", kind: "number" },
+  { key: "devtoolsPort", kind: "number" },
 ];
 
 /** 面板默认值，与 Host 侧 DEFAULT_CONFIG 保持一致。 */
@@ -34,6 +35,7 @@ export const FIELD_DEFAULTS: Readonly<Record<string, unknown>> = {
   maxIntervalMs: 9000,
   rateMaxInWindow: 12,
   catalogBudgetChars: 24000,
+  devtoolsPort: 9222,
 };
 
 /** 把一组纯字段声明投影成表单组件需要的 props 形状（纯函数，可离线测试）。 */

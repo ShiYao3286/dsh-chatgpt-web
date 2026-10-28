@@ -92,8 +92,18 @@ assert.equal(store.getSnapshot().failed, true, 'host rejected save shown');
 const tree = Component({ t: key => key, ...injected, useChatGptWebCard: select => select(store.getSnapshot()) });
 assert.equal(tree.type, 'SettingsForm');
 assert.equal(tree.props.state.failed, true);
-assert.equal(tree.children[0].props.role, 'status');
-assert.equal(tree.children.find(node => node.props?.id?.includes('webModel')).props.text, 'offline-model');
+// 第一个子节点是登录面板（拉取浏览器登录态），表单字段跟在它后面。
+const loginPanel = tree.children[0];
+assert.ok(loginPanel && loginPanel.type, 'login panel element present');
+// 该测试的 React 桩件没有 hooks，登录面板走静态回退：仍然要能渲染出结构。
+const panelTree = loginPanel.type({ t: key => 'L:' + key });
+assert.equal(panelTree.type, 'div');
+assert.equal(panelTree.props.className, 'cgw-login');
+assert.ok(panelTree.children.some(child => child?.props?.className === 'cgw-login-state'), 'shows the stored sign-in line');
+assert.ok(panelTree.children.some(child => child?.props?.className === 'cgw-login-row'), 'shows the action row');
+const fieldNodes = tree.children.filter(node => node?.props && node.props.id !== undefined);
+assert.ok(fieldNodes.length >= 8, 'renders the config fields after the login panel');
+assert.equal(fieldNodes.find(node => node.props.id.includes('webModel')).props.text, 'offline-model');
 for (const dispose of disposers) dispose();
 assert.equal(subscribed, 0);
 console.log('PASS packaged client manifest/assets, factory lexical require, real installed SettingsFormModel, slot visibility, hook, edit/save failure/dispose');

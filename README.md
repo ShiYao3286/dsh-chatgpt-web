@@ -24,15 +24,25 @@
 
 ## 认证
 
-保留既有 `~/.dsh/chatgpt-web/auth.json` 格式和位置（遵循现有路径环境配置）。运行时读取已有凭证，不自动改写；缺失、JWT exp 到期或服务器拒绝时返回明确认证错误。日志不输出 token 片段。
+凭证位置不变：`${DSH_HOME || ~/.dsh}/chatgpt-web/auth.json`。运行时读取已有凭证、不自动改写；缺失、JWT exp 到期或服务器拒绝时返回明确认证错误。日志不输出 token 片段。
 
-需要认证时，用户可显式执行 `node scripts/capture-auth.mjs`，在浏览器中正常手工登录。该脚本具有启动浏览器、读取和保存登录态的副作用，不属于离线测试。本次修复没有执行它，没有读取实际凭证，也没有真实请求网页接口。
+**在设置页一键拉取本地浏览器登录态**（0.1.2 起）：打开「设置 → ChatGPT 网页版」，点「拉取浏览器登录态」。插件会在宿主侧拉起一个**独立的、可见的真实浏览器**（专用 profile `chatgpt-web/browser-profile`，不复用你日常浏览器的数据），等你在这个窗口里正常登录 chatgpt.com，然后通过 CDP 读回 `accessToken`、cookie（仅 chatgpt.com / openai.com 域）与页面环境，落盘到上面的 `auth.json`。登录一次之后可长期复用，不必再操作。
+
+- 该浏览器窗口是独立进程，关掉它不影响 DSH，也不影响已保存的登录态。
+- 等待上限 10 分钟；期间可点「取消等待」（**只停止等待，不杀浏览器**，因为那可能是你正在输密码的窗口）。
+- 「清除本地登录态」会**删除** `auth.json`（登出的语义就是它不该留在磁盘上）。
+- 调试端口默认 9222，被占用时自动改用空闲端口；可在设置页调整。
+- 账号风险与站点条款风险由使用者承担；插件不自动刷新 token、不绕过验证码或挑战。
+
+命令行路径仍然保留：`node scripts/capture-auth.mjs` 会附着一个**你事先开好的** `--remote-debugging-port=9222` 浏览器并等你在其中登录。它读登录态、写 `auth.json`，属于有副作用的操作，不属于离线测试。
 
 ## 设置
 
 直接注册客户端 `settings.section`，不因缺少配置命名空间而隐藏页面；配置不可用时保留宿主表单的 unavailable/只读状态。使用真实 native volatile Config 与 `SettingsFormModel`，通过已有 settings gateway 保存到 profile patch，包含 revision 冲突检测。保存后同一 adapter 在下一次请求读取新配置；进行中的请求使用不可变快照，单飞闸门和限速历史不重建。
 
-只读 `chatGptWebStatus/status` 使用宿主 `TypertRemoteService`/`Remote` 与既有 gateway 访问控制，不新增 HTTP 文件接口、不接受路径参数。只返回 `missing`、`expired`、`unchecked`；后者表示未在线验证，不代表凭证可用。卡片不返回 token/cookie，也不执行在线认证。原 `~/.dsh/chatgpt-web/config.json` 不再作为此 adapter 的配置来源，文件不会被迁移或删除。
+设置页最上方是**登录态面板**（见上一节），下面是配置字段。面板通过 Host 的 `webServer` 路由（`/chatgpt-web/login/{status,start,cancel,logout}`）与宿主通信——**不是** `ctx.remote`：客户端 Remote 命名空间只来自宿主编译期静态枚举的贡献表，第三方插件无法注册自己的命名空间（见「已知边界」）。四个路由都先过 `ctx.connection.requestRejection`，未认证请求在业务代码之前就被拒。
+
+只读 `chatGptWebStatus/status` 仍通过宿主 `TypertRemoteService`/`Remote` 暴露给宿主内部消费者；它只返回 `missing`、`expired`、`unchecked`，后者表示未在线验证，不代表凭证可用。卡片不返回 token/cookie 明文，也不执行在线认证。原 `~/.dsh/chatgpt-web/config.json` 不再作为此 adapter 的配置来源，文件不会被迁移或删除。
 
 | 字段 | 默认值 | 说明 |
 |---|---|---|
@@ -42,6 +52,7 @@
 | minIntervalMs / maxIntervalMs | 4000 / 9000 | 调用间隔闸门，不排队等待 |
 | rateMaxInWindow | 12 | 滚动窗口请求上限 |
 | catalogBudgetChars | 24000 | 工具目录预算 |
+| devtoolsPort | 9222 | 「拉取浏览器登录态」用的调试端口；被占用会自动换端口 |
 
 ## 已知边界
 
@@ -51,6 +62,7 @@
 - 不支持图像输入，无权威 token usage；目录采用保守 16384 上下文 / 2048 默认输出预算，不是网页模型能力承诺。
 - 内部轮换种子有 12000 字符上限，adapter 会保守拒绝超长输入而不是静默截断；大工具目录可能提前触及此限制。
 - 网页接口不提供可靠 temperature、maxTokens、stop 控制，不保证这些选项被远端执行；不要依赖它们作为安全限制。
+- **客户端 Remote 命名空间不可自建**：浏览器端的 `remote.<ns>` 只来自 `@deepseek-ai/dsh-api-remotes` 编译期静态枚举的 `/remote` 贡献。第三方插件把 `remote.<ns>` 写进客户端 `inject` 会让该 entry 永久 pending，整个 Web boot 报 "1 entry did not activate"、界面停在失败屏。设置页因此走 Host 的 `webServer` 路由，`inject` 里只保留 `remote` 本身（Cordis 用 inject 门控该属性访问器）。
 - 历史 Chromium/page/PoW 模块作为未启用的旧实现保留，宿主 adapter 不走这些路径；不应将旧 smoke/probe 脚本作为安全离线测试。
 
 ## 本地测试

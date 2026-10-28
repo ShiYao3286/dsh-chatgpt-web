@@ -4,11 +4,12 @@ import { zh, en, NS, inject } from "../src/client/locales.ts";
 import { DEFAULT_CONFIG } from "../src/config.ts";
 
 section("字段声明");
-eq(FIELDS.length, 8, "8 个字段");
+eq(FIELDS.length, 9, "9 个字段（含登录用的调试端口）");
 eq(FIELDS[0].key, "transport", "第一个是 transport");
 eq(FIELDS[0].kind, "enum", "transport 是枚举");
 deepEq(FIELDS[0].options, ["node"], "仅启用 node");
 ok(FIELDS.slice(2).every((f) => f.kind === "number"), "其余都是数字");
+eq(FIELDS[FIELDS.length - 1].key, "devtoolsPort", "最后一个是调试端口");
 
 section("面板默认值与 Host 侧一致（防止两处漂移）");
 {
@@ -54,4 +55,10 @@ ok(en.title.length > 0, "英文有标题");
 ok(zh.transportHint.includes("不需要浏览器"), "提示语说明 Node 不需要浏览器");
 
 section("inject 声明");
-deepEq([...inject], ["slots", "locale", "configForms", "remote", "remote.chatGptWebStatus"], "原生设置和受控状态服务");
+{
+  // `remote.chatGptWebStatus` 必须是**不**声明的那个：宿主 0.2.1-rc.3 只从编译期
+  // `/remote` 贡献表挂载客户端 Remote 命名空间，第三方插件永远等不到自己的。
+  // 曾经声明它就导致整个 Web boot 停在 "1 entry did not activate"。
+  deepEq([...inject], ["slots", "locale", "configForms", "remote"], "原生设置服务 + remote 表");
+  ok(!inject.some((k) => k.startsWith("remote.")), "不得把 remote.<namespace> 写进 inject");
+}

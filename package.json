@@ -1,6 +1,6 @@
 {
   "name": "dsh-chatgpt-web",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Unofficial DSH plugin: use chatgpt.com free-tier web models as a DSH LLM provider. Strict single-flight, session binding, prompting-based tool calls.",

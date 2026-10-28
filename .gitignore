@@ -32,3 +32,4 @@ state.json
 
 # 临时脚本
 tmp-*.mjs
+test-out.txt
