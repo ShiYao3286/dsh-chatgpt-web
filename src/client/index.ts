@@ -29,7 +29,23 @@ export function createController(scope: unknown, primitives: Record<string, unkn
 }
 
 export { NS, zh, en };
-export const inject = ["slots", "locale", "configForms", "remote", "remote.chatGptWebStatus"];
+/**
+ * Required services only.
+ *
+ * `remote` itself must be declared: Cordis reads `ctx.remote` through an
+ * inject-gated accessor and throws "cannot get property \"remote\" without
+ * inject" when the fiber did not declare it.
+ *
+ * `remote.chatGptWebStatus` must NOT appear here. The Client Remote namespaces
+ * are mounted from compile-time `/remote` contributions that
+ * `@deepseek-ai/dsh-api-remotes` enumerates statically, so a Host-side
+ * `TypertRemoteService` alone never creates `ctx.remote.<name>` in the browser.
+ * Declaring that namespace as an inject made this entry pending forever and the
+ * whole Web boot aborted with "1 entry did not activate" — the entire UI stayed
+ * on the failure screen. The card now reads the auth status opportunistically
+ * and degrades to `unchecked`.
+ */
+export const inject = ["slots", "locale", "configForms", "remote"];
 
 /** Host 侧 settings 命名空间（与 src/index.ts 注册的一致）。 */
 export const HOST_SETTINGS_NS = "dsh-chatgpt-web";
@@ -38,7 +54,12 @@ export const SLOT_ID = "chatgpt-web";
 export const SLOT_ORDER = 40;
 
 export interface ClientContext {
-  remote?: { chatGptWebStatus: { status(): Promise<{ authStatus: string }> } };
+  /**
+   * The Client Remote table. `remote` itself always exists, but a
+   * `remote.<namespace>` service is mounted only from a compile-time
+   * contribution, so every namespace read below is optional.
+   */
+  remote?: Record<string, { status?: () => Promise<{ authStatus: string }> } | undefined>;
   locale: {
     bind: (ns: string) => (key: string) => string;
     register: (ns: string, dict: Record<string, unknown>) => void;
@@ -54,12 +75,31 @@ export interface ClientContext {
   effect: (fn: () => unknown, label?: string) => void;
 }
 
+/** Read the Host auth status when (and only when) the namespace is mounted. */
+function optionalStatus(ctx: ClientContext): (() => Promise<{ authStatus: string }>) | undefined {
+  let endpoint: { status?: () => Promise<{ authStatus: string }> } | undefined;
+  try {
+    // The Client Remote table may be a service proxy that rejects reads of a
+    // namespace no contribution mounted, so this probe must never throw.
+    endpoint = (ctx.remote as Record<string, { status?: () => Promise<{ authStatus: string }> } | undefined> | undefined)
+      ?.chatGptWebStatus;
+  } catch {
+    return undefined;
+  }
+  if (typeof endpoint?.status !== 'function') return undefined;
+  return () => endpoint!.status!();
+}
+
 export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS);
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "ui-settings-chatgpt-web: dictionaries");
 
-  const card = createController(ctx.configForms.get(HOST_SETTINGS_NS), require('@deepseek-ai/dsh-client-ui-primitives') as Record<string, unknown>, ctx.remote ? () => ctx.remote!.chatGptWebStatus.status() : undefined);
+  const card = createController(
+    ctx.configForms.get(HOST_SETTINGS_NS),
+    require('@deepseek-ai/dsh-client-ui-primitives') as Record<string, unknown>,
+    optionalStatus(ctx),
+  );
   const Card = createCard(require);
   ctx.effect(() => () => card.dispose(), 'ui-settings-chatgpt-web: form subscription');
 
